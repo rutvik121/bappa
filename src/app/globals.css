@@ -391,20 +391,36 @@ button {
   color: var(--ink-1);
 }
 
-.invites {
+.doors {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   width: min(100%, 460px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-/* Four invitations. Each carries its own accent, used only in its mark
-   and in the state of having been chosen -- never as a fill. */
-.invite {
-  --accent: 255, 228, 200;
+.doors > li {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+}
+
+/* Four doorways. Each carries its own accent, used only in its mark
+   -- never as a fill. Choosing one is walking through it, so there is
+   no chosen state to hold: the panel is gone by the next breath. */
+.door {
+  --accent: 255, 228, 200;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'mark name'
+    'line line';
+  align-items: center;
+  /* Rows sit at the top rather than sharing the slack, so the four names
+     line up across the row whether or not a line wraps. */
+  align-content: start;
+  gap: 7px 8px;
   min-height: 96px;
   padding: 14px 14px 15px;
   text-align: left;
@@ -422,25 +438,21 @@ button {
     transform 160ms ease;
 }
 
-.invite--gratitude { --accent: 232, 170, 108; }
-.invite--wish { --accent: 240, 218, 170; }
-.invite--vighna { --accent: 186, 156, 138; }
-.invite--promise { --accent: 184, 196, 146; }
+.door--gratitude { --accent: 232, 170, 108; }
+.door--wish { --accent: 240, 218, 170; }
+.door--vighna { --accent: 186, 156, 138; }
+.door--promise { --accent: 184, 196, 146; }
 
-.invite-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.invite-mark {
+.door-mark {
+  grid-area: mark;
   flex: none;
   color: rgb(var(--accent));
   opacity: 0.75;
   transition: opacity 600ms ease;
 }
 
-.invite-name {
+.door-name {
+  grid-area: name;
   font-family: var(--sans);
   font-size: 11px;
   font-weight: 600;
@@ -449,7 +461,9 @@ button {
   color: var(--ink-1);
 }
 
-.invite-line {
+.door-line {
+  grid-area: line;
+  align-self: start;
   font-family: var(--serif);
   font-size: 18px;
   font-weight: 500;
@@ -457,44 +471,22 @@ button {
   color: var(--ink-2);
 }
 
-.invite:hover {
+.door:hover {
   border-color: var(--line-2);
   background: rgba(255, 228, 200, 0.04);
 }
 
-.invite:active {
-  transform: translateY(1px);
-}
-
-/* Chosen: the accent comes up in the edge and a breath of it in the
-   ground, and the other three step back. */
-.invite[aria-pressed='true'] {
-  border-color: rgba(var(--accent), 0.8);
-  background: rgba(var(--accent), 0.09);
-}
-
-.invite[aria-pressed='true'] .invite-mark {
+/* The accent answers on approach -- the only colour in the frame that
+   is not his, and only for as long as a hand is over it. */
+.door:hover .door-mark {
   opacity: 1;
 }
 
-.invite[aria-pressed='true'] .invite-line {
-  color: var(--ink-1);
+.door:active {
+  transform: translateY(1px);
 }
 
-.invites.has-choice .invite[aria-pressed='false'] {
-  opacity: 0.5;
-}
-
-.invites.has-choice .invite[aria-pressed='false']:hover {
-  opacity: 0.85;
-}
-
-.choose-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: min(100%, 460px);
+.aside--leave {
   margin-top: 14px;
 }
 
@@ -756,23 +748,19 @@ button {
     height: 42%;
   }
 
-  .invites {
+  .doors {
     grid-template-columns: repeat(4, 1fr);
     width: min(100%, 900px);
     gap: 12px;
   }
 
-  .invite {
+  .door {
     min-height: 108px;
     padding: 16px 16px 18px;
   }
 
-  .invite-line {
+  .door-line {
     font-size: 19px;
-  }
-
-  .choose-foot {
-    width: min(100%, 900px);
   }
 
   /* With room to spare the writing sits lower, over his base, where it
@@ -812,7 +800,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .layer,
   .scrim,
-  .invite,
+  .door,
   .rite,
   .farewell-line {
     transition-duration: 250ms !important;
