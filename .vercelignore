@@ -1,0 +1,10 @@
+# The source GLB lives at public/models/ganpati.glb; this is the original
+# drop and would otherwise be uploaded a second time.
+UP2ZNtEwny.glb
+
+.next
+node_modules
+tsconfig.tsbuildinfo
+.claude
+README.md
+scripts/sound/source
