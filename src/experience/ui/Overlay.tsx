@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useScene, type ContributionType } from '../state/sceneState';
+import { useBoot } from '../state/boot';
 import { audio, type SoundStatus } from '../audio/AudioManager';
 import { VISARJAN_DURATION, DARKNESS_HOLD } from '../components/DissolveController';
-import { useCollective } from '../state/collective';
+import { useCollective, hasLeftSomething } from '../state/collective';
 import {
   getFestivalStatus,
   getCountdown,
@@ -13,17 +14,19 @@ import {
 } from '../state/festival';
 import { FAREWELL_LINES, FAREWELL_OUT_MS } from './farewell';
 import { OFFERINGS, OfferingMark, offeringFor } from './offerings';
+import { Masthead } from './Masthead';
 
 /**
  * The entire interface.
  *
- * ORIENTATION → CHOICE → PERSONAL OFFERING → TRANSFORMATION → ABSORPTION
- * → EMOTIONAL RESPONSE → STILLNESS.
+ * ARRIVAL → ORIENTATION → CHOICE → PERSONAL OFFERING → TRANSFORMATION →
+ * ABSORPTION → EMOTIONAL RESPONSE → STILLNESS.
  *
  * Each step shows the least language that lets the next thing happen.
- * During the transformation the interface is absent, because that moment
- * is not the visitor's to operate. Nothing here makes a sound: gestures
- * wake the AudioContext, and everything after that is the SoundDirector's.
+ * Nothing is asked of the visitor until he can be seen; during the
+ * transformation the interface is absent, because that moment is not the
+ * visitor's to operate. Nothing here makes a sound: gestures wake the
+ * AudioContext, and everything after that is the SoundDirector's.
  */
 
 type Step = 'choose' | 'write';
@@ -40,19 +43,23 @@ export function Overlay({ ready }: { ready: boolean }) {
   const setMood = useScene((s) => s.setMood);
   const setDraft = useScene((s) => s.setDraft);
 
+  const modelAt = useBoot((s) => s.modelAt);
+  const failed = useBoot((s) => s.failed);
+
   const count = useCollective((s) => s.count);
   const collectiveReady = useCollective((s) => s.ready);
   const [festival, setFestival] = useState(() => getFestivalStatus());
   const [countdown, setCountdown] = useState<Countdown>(() => getCountdown());
 
-  /**
-   * Once read, the supporting lines step back so Bappa is what is left.
-   * They dim rather than disappear, and any movement brings them back.
-   */
-  const [settled, setSettled] = useState(false);
+  /** The ritual is offered only once the light has found him. */
+  const [arrived, setArrived] = useState(false);
+  /** Still loading after a while: say so, once, quietly. */
+  const [slow, setSlow] = useState(false);
 
   const [farewellIn, setFarewellIn] = useState(false);
   const [farewellOut, setFarewellOut] = useState(false);
+  /** Whether this device left something with him; read when he goes. */
+  const [left, setLeft] = useState(false);
   /**
    * Once he starts to leave, the interface goes and does not come back.
    * Unmounted rather than faded, so it is a certainty and not an animation.
@@ -62,9 +69,14 @@ export function Overlay({ ready }: { ready: boolean }) {
   const firstRead = useRef(true);
 
   const [step, setStep] = useState<Step>('choose');
-  const [picked, setPicked] = useState<ContributionType | null>(null);
   const [sound, setSound] = useState<SoundStatus>('off');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // The server-rendered prelude hands over in the same frame the live
+  // interface becomes visible, in the same place, so nothing blinks.
+  useLayoutEffect(() => {
+    if (ready) document.documentElement.dataset.live = '1';
+  }, [ready]);
 
   // Read the tally once on arrival, so a visitor sees Bappa exactly as
   // built as everyone before them left him.
@@ -76,7 +88,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     // Sound wakes on the first meaningful gesture anywhere, never before.
     const disarm = room.armGesture();
     // Bytes only, and after the sculpture has had the network to itself.
-    const fetchLater = window.setTimeout(() => room.prefetch(), 1500);
+    const fetchLater = window.setTimeout(() => room.prefetchEarly(), 2500);
 
     return () => {
       unsubscribe();
@@ -84,6 +96,16 @@ export function Overlay({ ready }: { ready: boolean }) {
       window.clearTimeout(fetchLater);
     };
   }, []);
+
+  useEffect(() => {
+    if (modelAt === null) {
+      const t = window.setTimeout(() => setSlow(true), 4500);
+      return () => window.clearTimeout(t);
+    }
+    // Let the light find him before anything asks anything of the visitor.
+    const t = window.setTimeout(() => setArrived(true), 1500);
+    return () => window.clearTimeout(t);
+  }, [modelAt]);
 
   /**
    * The ten days are the premise, so the ending is not something anyone
@@ -127,6 +149,7 @@ export function Overlay({ ready }: { ready: boolean }) {
       return undefined;
     }
 
+    setLeft(hasLeftSomething());
     const clear = setTimeout(() => setUiGone(true), 1500);
     const id = setInterval(() => {
       if (useScene.getState().elapsed >= VISARJAN_DURATION + DARKNESS_HOLD) setFarewellIn(true);
@@ -148,33 +171,10 @@ export function Overlay({ ready }: { ready: boolean }) {
     return () => clearTimeout(t);
   }, [farewellIn]);
 
-  useEffect(() => {
-    if (state !== 'IDLE') {
-      setSettled(false);
-      return undefined;
-    }
-
-    let timer = window.setTimeout(() => setSettled(true), 6000);
-    const wake = () => {
-      setSettled(false);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setSettled(true), 6000);
-    };
-
-    window.addEventListener('pointermove', wake, { passive: true });
-    window.addEventListener('keydown', wake);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('pointermove', wake);
-      window.removeEventListener('keydown', wake);
-    };
-  }, [state]);
-
   // Back at rest: nothing is chosen, nothing half-written survives.
   useEffect(() => {
     if (state === 'IDLE') {
       setStep('choose');
-      setPicked(null);
       if (useScene.getState().draft) setDraft('');
     }
   }, [state, setDraft]);
@@ -191,7 +191,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     if (state !== 'CONTRIBUTING') return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (step === 'write') setStep('choose');
+      if (step === 'write') back();
       else leave();
     };
     window.addEventListener('keydown', onKey);
@@ -199,8 +199,8 @@ export function Overlay({ ready }: { ready: boolean }) {
   });
 
   const begin = () => {
+    if (!arrived) return;
     audio().init();
-    setPicked(null);
     setMood(null);
     setStep('choose');
     setState('CONTRIBUTING');
@@ -208,10 +208,16 @@ export function Overlay({ ready }: { ready: boolean }) {
 
   const leave = () => setState('IDLE');
 
-  const pick = (id: ContributionType) => {
-    setPicked(id);
+  /** Each offering is a doorway: choosing it is walking through. */
+  const open = (id: ContributionType) => {
     setType(id);
     setMood(id);
+    setStep('write');
+  };
+
+  const back = () => {
+    setMood(null);
+    setStep('choose');
   };
 
   const offer = () => {
@@ -219,7 +225,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     setState('UNDERSTANDING');
   };
 
-  const active = offeringFor(picked ?? type);
+  const active = offeringFor(type);
 
   const scene: Scene =
     state === 'IDLE'
@@ -233,6 +239,7 @@ export function Overlay({ ready }: { ready: boolean }) {
             : 'offering';
 
   const time = describeTime(festival, countdown);
+  const farewell = FAREWELL_LINES.filter((l) => !('onlyIfLeft' in l) || left);
 
   return (
     <div className={`overlay ${ready ? 'is-ready' : ''}`} data-scene={scene}>
@@ -243,41 +250,62 @@ export function Overlay({ ready }: { ready: boolean }) {
 
       {!uiGone && (
         <>
+          {/* ---------------- ARRIVAL ---------------- */}
+          <div className={`ember ${modelAt === null && !failed ? 'in' : ''}`} aria-hidden="true">
+            <span />
+          </div>
+          <p className={`ember-note ${slow && modelAt === null && !failed ? 'in' : ''}`} aria-live="polite">
+            {slow && modelAt === null && !failed ? 'He is on his way.' : ''}
+          </p>
+
           {/* ---------------- ORIENTATION ---------------- */}
-          <header
-            className={`layer layer--masthead ${scene === 'idle' ? 'in' : ''} ${
-              settled ? 'is-settled' : ''
-            }`}
-          >
-            <p className="brand">Bappa 2026</p>
-            <h1 className="headline">
-              Leave something
-              <br />
-              with Bappa.
-            </h1>
-            <p className="litany">A wish. A gratitude. A burden. A promise.</p>
-            <p className="support">He becomes what we leave behind.</p>
+          <header className={`layer layer--masthead ${scene === 'idle' ? 'in' : ''}`}>
+            <Masthead />
           </header>
 
-          <div
-            className={`layer layer--foot ${scene === 'idle' ? 'in' : ''} ${
-              settled ? 'is-settled' : ''
-            }`}
-          >
-            <p className="time">
-              {time.count && <span className="time-count">{time.count}</span>}
-              <span className="time-phase">{time.phase}</span>
-            </p>
-
-            <button className="rite" onClick={begin}>
-              Make an offering
-            </button>
-
-            {collectiveReady && count > 0 && (
-              <p className="tally">
-                {count.toLocaleString('en-IN')}{' '}
-                {count === 1 ? 'offering has' : 'offerings have'} become part of Bappa.
+          <div className={`layer layer--foot ${scene === 'idle' ? 'in' : ''}`}>
+            {failed === 'webgl' && (
+              <p className="fallback">
+                <span className="fallback-line">This device can’t show him.</span>
+                <span className="fallback-help">Open this page in Chrome or Safari to see Bappa.</span>
               </p>
+            )}
+
+            {failed === 'load' && (
+              <>
+                <p className="fallback">
+                  <span className="fallback-line">He couldn’t reach you.</span>
+                  <span className="fallback-help">The connection may have dropped.</span>
+                </p>
+                <button className="rite" onClick={() => window.location.reload()}>
+                  Try again
+                </button>
+              </>
+            )}
+
+            {!failed && (
+              <>
+                <p className="time">
+                  {time.count && <span className="time-count">{time.count}</span>}
+                  <span className="time-phase">{time.phase}</span>
+                </p>
+
+                <button
+                  className={`rite ${arrived ? '' : 'is-waiting'}`}
+                  onClick={begin}
+                  tabIndex={arrived ? 0 : -1}
+                  aria-hidden={!arrived}
+                >
+                  Make an offering
+                </button>
+
+                {collectiveReady && count > 0 && (
+                  <p className="tally">
+                    {count.toLocaleString('en-IN')}{' '}
+                    {count === 1 ? 'offering has' : 'offerings have'} become part of Bappa.
+                  </p>
+                )}
+              </>
             )}
           </div>
 
@@ -288,45 +316,30 @@ export function Overlay({ ready }: { ready: boolean }) {
           >
             <h2 className="ask">What will you leave with him?</h2>
 
-            <div className={`invites ${picked ? 'has-choice' : ''}`} role="group">
+            <ul className="doors">
               {OFFERINGS.map((o) => (
-                <button
-                  key={o.id}
-                  className={`invite invite--${o.id.toLowerCase()}`}
-                  aria-pressed={picked === o.id}
-                  onClick={() => pick(o.id)}
-                >
-                  <span className="invite-top">
+                <li key={o.id}>
+                  <button className={`door door--${o.id.toLowerCase()}`} onClick={() => open(o.id)}>
                     <OfferingMark id={o.id} />
-                    <span className="invite-name">{o.name}</span>
-                  </span>
-                  <span className="invite-line">{o.line}</span>
-                </button>
+                    <span className="door-name">{o.name}</span>
+                    <span className="door-line">{o.line}</span>
+                  </button>
+                </li>
               ))}
-            </div>
+            </ul>
 
-            <div className="choose-foot">
-              <button className="aside" onClick={leave}>
-                Not now
-              </button>
-              <button
-                className={`rite ${picked ? '' : 'is-waiting'}`}
-                onClick={() => picked && setStep('write')}
-                tabIndex={picked ? 0 : -1}
-                aria-hidden={!picked}
-              >
-                {picked ? offeringFor(picked).choose : 'Choose one'}
-              </button>
-            </div>
+            <button className="aside aside--leave" onClick={leave}>
+              Not now
+            </button>
           </section>
 
           {/* ---------------- PERSONAL OFFERING ---------------- */}
           <section
-            className={`layer layer--write layer--${active.id.toLowerCase()} ${
+            className={`layer layer--write door--${active.id.toLowerCase()} ${
               scene === 'write' ? 'in' : ''
             }`}
           >
-            <button className="aside aside--back" onClick={() => setStep('choose')}>
+            <button className="aside aside--back" onClick={back}>
               <span aria-hidden="true">←</span> {active.name}
             </button>
 
@@ -344,18 +357,20 @@ export function Overlay({ ready }: { ready: boolean }) {
               rows={3}
               spellCheck={false}
               autoComplete="off"
+              enterKeyHint="done"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) offer();
               }}
             />
 
-            <div className="write-foot">
-              <span className="note">Only you will ever read this.</span>
-              <button className="rite" onClick={offer} disabled={!draft.trim()}>
-                {active.offer}
-              </button>
-            </div>
+            {/* What happens to the words, in one breath: no one reads
+                them, nothing keeps them, and they become part of him. */}
+            <p className="note">No one else will ever read this. It becomes part of him.</p>
+
+            <button className="rite rite--offer" onClick={offer} disabled={!draft.trim()}>
+              {active.offer}
+            </button>
           </section>
 
           {/* ---------------- EMOTIONAL RESPONSE ---------------- */}
@@ -376,7 +391,7 @@ export function Overlay({ ready }: { ready: boolean }) {
         className={`layer layer--farewell ${farewellIn ? 'in' : ''} ${farewellOut ? 'out' : ''}`}
         aria-live="polite"
       >
-        {FAREWELL_LINES.map((line) => (
+        {farewell.map((line) => (
           <p
             key={line.kind}
             className={`farewell-line farewell-line--${line.kind}`}
@@ -389,13 +404,14 @@ export function Overlay({ ready }: { ready: boolean }) {
         ))}
       </div>
 
-      {/* The only persistent control. It goes when he starts to leave. */}
+      {/* The only persistent control. It says what the sound is doing, and
+          goes when he starts to leave. */}
       <button
         className={`sound ${state === 'VISARJAN' ? 'gone' : ''} ${sound === 'on' ? 'is-on' : ''}`}
         onClick={() => audio().toggle()}
         aria-pressed={sound === 'on'}
       >
-        {sound === 'on' ? 'Sound off' : 'Sound on'}
+        Sound <span className="sound-state">{sound === 'on' ? 'on' : 'off'}</span>
       </button>
     </div>
   );

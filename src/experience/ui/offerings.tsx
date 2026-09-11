@@ -15,8 +15,6 @@ export interface Offering {
   name: string;
   /** Why you would choose it, in one line. */
   line: string;
-  /** The action once chosen. */
-  choose: string;
   /** The question asked while writing. */
   prompt: string;
   placeholder: string;
@@ -31,7 +29,6 @@ export const OFFERINGS: readonly Offering[] = [
     id: 'GRATITUDE',
     name: 'Gratitude',
     line: 'For what you’ve been given.',
-    choose: 'Leave gratitude',
     prompt: 'What are you grateful for?',
     placeholder: 'Someone. Something. A moment.',
     offer: 'Leave it with Bappa',
@@ -41,7 +38,6 @@ export const OFFERINGS: readonly Offering[] = [
     id: 'WISH',
     name: 'Wish',
     line: 'For what you hope for.',
-    choose: 'Leave a wish',
     prompt: 'What are you hoping for?',
     placeholder: 'Say it plainly. He is listening.',
     offer: 'Place your wish',
@@ -51,7 +47,6 @@ export const OFFERINGS: readonly Offering[] = [
     id: 'VIGHNA',
     name: 'Vighna',
     line: 'For what weighs on you.',
-    choose: 'Set down a burden',
     prompt: 'What are you ready to leave behind?',
     placeholder: 'The thing you have been carrying.',
     offer: 'Give it to Vighnaharta',
@@ -61,7 +56,6 @@ export const OFFERINGS: readonly Offering[] = [
     id: 'PROMISE',
     name: 'Promise',
     line: 'For who you mean to become.',
-    choose: 'Make a promise',
     prompt: 'What will you promise yourself?',
     placeholder: 'Something small enough to keep.',
     offer: 'Make the promise',

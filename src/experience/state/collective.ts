@@ -53,6 +53,21 @@ export interface CollectiveSource {
 
 const STORAGE_KEY = 'bappa.offerings';
 
+/**
+ * Whether this device has ever left something with him. A single flag --
+ * never the text, never the kind -- read only to say, at the very end,
+ * that what they left went with him.
+ */
+const LEFT_KEY = 'bappa.left';
+
+export function hasLeftSomething(): boolean {
+  try {
+    return localStorage.getItem(LEFT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export const localSource: CollectiveSource = {
   async load() {
     try {
@@ -150,8 +165,19 @@ export const useCollective = create<CollectiveStore>((set) => ({
   },
 
   record: async () => {
-    const count = await source.add();
-    set({ count, build: buildFromCount(count) });
+    try {
+      localStorage.setItem(LEFT_KEY, '1');
+    } catch {
+      // Private mode: the ending simply will not mention it.
+    }
+    try {
+      const count = await source.add();
+      set({ count, build: buildFromCount(count) });
+    } catch {
+      // The connection dropped. The offering still happened here, and he
+      // still takes it in; the shared tally catches up on the next visit.
+      set((s) => ({ count: s.count + 1, build: buildFromCount(s.count + 1) }));
+    }
   },
 
   setCount: async (n) => {

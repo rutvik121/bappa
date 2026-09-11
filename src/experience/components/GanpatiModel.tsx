@@ -5,6 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { useScene } from '../state/sceneState';
+import { useBoot } from '../state/boot';
 import { currentFormation } from '../state/formation';
 import { bakeVertexWeights } from '../systems/SurfaceSampler';
 import { createFormationCloud, type FormationCloud } from '../systems/FormationCloud';
@@ -54,9 +55,27 @@ interface Props {
  * no noise in the shader at all. Reading an attribute is also markedly
  * cheaper per fragment than an fbm, which matters on a phone.
  */
+const grainFn = /* glsl */ `
+  // One value per grain of clay, in the mesh's own space so the grains
+  // stay put on the surface as the camera drifts. ~2-3px on screen.
+  float bappaGrain(vec3 p) {
+    vec3 q = fract(floor(p * 560.0) * 0.1031);
+    q += dot(q, q.zyx + 31.32);
+    return fract((q.x + q.y) * q.z);
+  }
+`;
+
+/**
+ * Only Visarjan removes clay. What has not formed yet is still there, as
+ * raw clay: cutting it away left black holes that every first-time visitor
+ * read as a broken model. When he goes, he goes grain by grain rather
+ * than along a clean cut.
+ */
 const carveChunk = /* glsl */ `
-  if (vFormWeight > uFormation) discard;
-  if (vFormWeight > 1.0 - uDissolve) discard;
+  if (uDissolve > 0.0001) {
+    float behind = vFormWeight - (1.0 - uDissolve);
+    if (behind > 0.0 && bappaGrain(vLocalPos) > 1.0 - clamp(behind / 0.07, 0.0, 1.0)) discard;
+  }
 `;
 
 export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
@@ -72,7 +91,7 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     uDissolve: { value: 0 },
     uFormation: { value: 0 },
     uTime: { value: 0 },
-    uEdge: { value: new THREE.Color('#ff9a55') },
+    uEdge: { value: new THREE.Color('#ffb47c') },
     uImpacts: {
       value: Array.from({ length: IMPACT_SLOTS }, () => new THREE.Vector4(0, 0, 0, -1)),
     },
@@ -155,7 +174,8 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
            varying float vFormWeight;
            varying vec3 vLocalPos;
            uniform float uDissolve;
-           uniform float uFormation;`
+           uniform float uFormation;
+           ${grainFn}`
         );
       };
 
@@ -179,11 +199,20 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
             `#include <dithering_fragment>
              ${carveChunk}
 
-             // The clay does not emit. The only concession at the forming
-             // edge is a slight warming of its own colour -- the look of
-             // damp clay catching the key light, not of a lit seam.
-             float front = smoothstep(uFormation - 0.03, uFormation, vFormWeight);
-             gl_FragColor.rgb = mix(gl_FragColor.rgb, uEdge, front * 0.12);
+             // --- what is still being made ---
+             // Unfinished passages are raw clay: greyer, drier, darker and
+             // granular, the way a murti looks in the workshop before it is
+             // smoothed. Never a hole. Where raw meets finished, the seam is
+             // a little darker, like clay that has just been pressed on.
+             float ahead = vFormWeight - uFormation;
+             float raw = smoothstep(0.0, 0.06, ahead);
+             float speck = bappaGrain(vLocalPos) - 0.5;
+             float luma = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
+             vec3 rawClay = mix(gl_FragColor.rgb, vec3(luma) * vec3(1.0, 0.92, 0.84), 0.5)
+               * (0.68 + speck * 0.32);
+             gl_FragColor.rgb = mix(gl_FragColor.rgb, rawClay, raw);
+             float seam = smoothstep(-0.03, 0.0, ahead) * (1.0 - smoothstep(0.0, 0.03, ahead));
+             gl_FragColor.rgb *= 1.0 - seam * 0.14;
 
              // --- an offering arriving ---
              // The clay catches the light where it was touched: a small,
@@ -202,17 +231,20 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
 
                // The lit patch spreads a little as it fades, the way heat
                // moves into a body rather than sitting on it.
-               float radius = 0.055 + life * 0.05;
+               // Local units: the model is scaled ~6.6x, so this is a few
+               // centimetres of him, not a patch of his body.
+               float radius = 0.028 + life * 0.026;
                float near = 1.0 - smoothstep(0.0, radius, distance(vLocalPos, im.xyz));
 
-               gl_FragColor.rgb += uEdge * near * near * env * 0.85;
+               gl_FragColor.rgb += uEdge * near * near * env * 0.3;
              }
 
-             // And along the retreating edge, when he is going.
+             // And when he is going, the clay dries and loosens before it
+             // comes away: it darkens. No burning edge -- that is what every
+             // dissolve effect does, and it read as him being set alight.
              if (uDissolve > 0.0001) {
-               float back = smoothstep(1.0 - uDissolve - 0.055, 1.0 - uDissolve, vFormWeight);
-               gl_FragColor.rgb = mix(gl_FragColor.rgb, uEdge, back * 0.85);
-               gl_FragColor.rgb += uEdge * back * back * 1.5;
+               float loosening = smoothstep(-0.08, 0.0, vFormWeight - (1.0 - uDissolve));
+               gl_FragColor.rgb *= 1.0 - loosening * 0.4;
              }`
           );
       };
@@ -259,6 +291,11 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
   useEffect(() => {
     if (cloud.current) cloud.current.uniforms.uScale.value = size.height * 0.05;
   }, [size.height, model]);
+
+  // He is here: the light can come up on him, and the ritual can be offered.
+  useEffect(() => {
+    useBoot.getState().setModelReady();
+  }, [model]);
 
   // Hand the normalised surface to the dissolve system so its fragments
   // detach from exactly where the sculpture is eroding.

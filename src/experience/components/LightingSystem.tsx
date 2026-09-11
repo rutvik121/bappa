@@ -5,6 +5,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene, type ContributionType } from '../state/sceneState';
 import { BAPPA_CENTER } from './GanpatiModel';
+import { revealAmount } from '../state/boot';
 import type { PerfProfile } from '../systems/perf';
 
 /**
@@ -85,6 +86,9 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
       extinction = 1 - Math.min(1, Math.max(0, (elapsed - 30) / 26));
       extinction *= extinction;
     }
+
+    // Arrival: he is in the dark first, and the light finds him.
+    extinction *= revealAmount();
 
     if (key.current) key.current.intensity = 34 * flicker * mood.current.key * extinction;
     if (rim.current) rim.current.intensity = 26 * (2 - flicker) * mood.current.rim * extinction;

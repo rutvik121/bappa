@@ -130,10 +130,12 @@ export function describeTime(
   countdown: Countdown,
   now = Date.now() + clockOffset
 ): TimeCopy {
+  // Before Chaturthi he is still in the workshop, being made -- which is
+  // why he can already be seen, and why offerings already shape him.
   if (status.phase === 'BEFORE') {
     const days = Math.max(1, Math.ceil((FESTIVAL_START.getTime() - now) / DAY_MS));
     return {
-      count: `Bappa arrives in ${days} ${days === 1 ? 'day' : 'days'}`,
+      count: days === 1 ? 'Ganesh Chaturthi is tomorrow' : `Ganesh Chaturthi in ${days} days`,
       phase: '10 days. Then Visarjan.',
     };
   }
@@ -147,14 +149,15 @@ export function describeTime(
   if (daysLeft <= 1) {
     const hours = Math.max(1, Math.ceil(status.msRemaining / HOUR_MS));
     return {
-      count: hours === 1 ? 'The last hour' : `${hours} hours remain`,
+      count: hours === 1 ? 'The last hour' : `${hours} hours until Visarjan`,
       phase: 'Today, we let him go.',
     };
   }
   if (daysLeft === 2) return { count: null, phase: 'Tomorrow, we let him go.' };
 
+  // "Remain" alone left a first-time visitor asking: remain until what?
   return {
-    count: `${daysLeft} days remain`,
+    count: `${daysLeft} days until Visarjan`,
     phase: status.day <= 1 ? 'He’s only beginning.' : 'He’s taking shape.',
   };
 }

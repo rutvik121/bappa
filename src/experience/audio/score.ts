@@ -71,8 +71,11 @@ export const SPACE = {
   /** One distant ghanta a few seconds in: someone is here, and so is he. */
   welcomeAt: 3,
   welcomeDb: -30,
-  /** The music steps back while an offering is happening. */
-  duckDb: -8,
+  /**
+   * The music all but leaves while an offering is happening, so the touch
+   * on the clay lands in quiet rather than on top of a song.
+   */
+  duckDb: -15,
   /** How far the pandal ambience wanders, so it never sits still. */
   wanderDb: 2.5,
   wanderGap: [8, 15] as const,
@@ -183,8 +186,8 @@ export const RECEIVE = {
   /** The rest of the offering entering him: sparse, tiny touches. */
   arrivalDb: -27,
   /** Touches per second per share-of-the-offering-per-second arriving. */
-  arrivalRate: 5,
-  arrivalMax: 4,
+  arrivalRate: 3,
+  arrivalMax: 2.5,
 } as const;
 
 /* ------------------------------------------------------------------ */

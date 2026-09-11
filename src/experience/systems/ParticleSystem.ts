@@ -336,11 +336,13 @@ export class ParticleSystem {
       this.ay[idx] = ay;
       this.az[idx] = az;
 
-      // Start off the mark and drift in: assembly reads as the words
+      // Start just off the mark and drift in: assembly reads as the words
       // condensing, where spawning exactly on the anchor reads as a decal.
-      this.px[idx] = ax + (Math.random() - 0.5) * 0.5;
-      this.py[idx] = ay + (Math.random() - 0.5) * 0.4;
-      this.pz[idx] = az + (Math.random() - 0.5) * 0.3;
+      // Close, though -- the plane is near the lens, so a wide scatter here
+      // fills the whole screen and the words never read as words.
+      this.px[idx] = ax + (Math.random() - 0.5) * 0.12;
+      this.py[idx] = ay + (Math.random() - 0.5) * 0.08;
+      this.pz[idx] = az + (Math.random() - 0.5) * 0.06;
 
       this.vx[idx] = 0;
       this.vy[idx] = 0;
@@ -350,8 +352,8 @@ export class ParticleSystem {
       this.stage[idx] = FORMING;
       this.life[idx] = 0;
       // Staggered so the text resolves in a wave rather than all at once.
-      this.hold[idx] = hold + Math.random() * 0.5;
-      this.maxLife[idx] = 12 + Math.random() * 5;
+      this.hold[idx] = hold + Math.random() * 0.35;
+      this.maxLife[idx] = 9 + Math.random() * 2;
       this.phase[idx] = Math.random() * 100;
       this.intensity[idx] = 0.4 + Math.random() * 0.3;
       // Grain size is set against the text plane, which sits a fixed
@@ -414,10 +416,12 @@ export class ParticleSystem {
     this.intensity[i] = 0.55 + Math.random() * 0.4;
 
     // A soft outward breath as the shape gives way -- the words come
-    // apart before anything starts travelling.
-    this.vx[i] = (Math.random() - 0.5) * 0.45;
-    this.vy[i] = (Math.random() - 0.5) * 0.3 + 0.1;
-    this.vz[i] = (Math.random() - 0.5) * 0.35;
+    // apart before anything starts travelling. Small: the letters are a
+    // couple of units from the lens, so anything more scatters the
+    // offering across the whole screen like snow.
+    this.vx[i] = (Math.random() - 0.5) * 0.18;
+    this.vy[i] = (Math.random() - 0.5) * 0.12 + 0.05;
+    this.vz[i] = (Math.random() - 0.5) * 0.14 - 0.08;
 
     // Now the offering takes on the character of its type.
     if (this.type[i] === 2) {
@@ -426,10 +430,10 @@ export class ParticleSystem {
       this.ax[i] = this.clusterX;
       this.ay[i] = this.clusterY;
       this.az[i] = this.clusterZ;
-      this.breakAt[i] = 2.4 + Math.random() * 1.6;
-      this.size[i] *= 1.5;
+      this.breakAt[i] = 1.7 + Math.random() * 1.0;
+      this.size[i] *= 1.4;
     }
-    if (this.type[i] === 1) this.vy[i] += 0.3;
+    if (this.type[i] === 1) this.vy[i] += 0.22;
     if (this.type[i] === 3) this.size[i] *= 0.5;
   }
 
@@ -493,10 +497,13 @@ export class ParticleSystem {
 
         // Critically damped pull onto the glyph point, plus a breath of
         // noise so the letters shimmer instead of sitting dead still.
+        // The noise is per second, not per frame: per frame, at 60fps it
+        // held every grain ~0.1 units off its letter -- a band of static
+        // instead of the words the visitor just wrote.
         const k = Math.min(1, dt * 5.5);
-        x += (this.ax[i] - x) * k + n[0] * 0.012;
-        y += (this.ay[i] - y) * k + n[1] * 0.012;
-        z += (this.az[i] - z) * k + n[2] * 0.012;
+        x += (this.ax[i] - x) * k + n[0] * 0.02 * dt;
+        y += (this.ay[i] - y) * k + n[1] * 0.02 * dt;
+        z += (this.az[i] - z) * k + n[2] * 0.02 * dt;
 
         if (age > this.hold[i]) {
           this.px[i] = x;
@@ -550,11 +557,11 @@ export class ParticleSystem {
             // only turns toward him once it has risen; the attraction is
             // weak while the buoyancy is strong, so the arc is a climb
             // that bends rather than a line that sags.
-            const climbing = 1 - Math.min(1, age / 3.2);
-            pull = 0.18 + (1 - climbing) * 1.05;
-            drag = 0.42;
-            noiseAmp = 0.26;
-            this.vy[i] += (0.42 * climbing + 0.05) * dt;
+            const climbing = 1 - Math.min(1, age / 2.2);
+            pull = 0.22 + (1 - climbing) * 1.1;
+            drag = 0.5;
+            noiseAmp = 0.14;
+            this.vy[i] += (0.38 * climbing + 0.04) * dt;
             break;
           }
 
@@ -580,8 +587,8 @@ export class ParticleSystem {
               this.vz[i] += (kz / kd) * grip * dt;
 
               pull = 0.05;
-              drag = 1.5;
-              noiseAmp = 0.85;
+              drag = 1.7;
+              noiseAmp = 0.35;
               this.vy[i] -= 0.34 * dt; // it has weight
             } else if (cracking) {
               // The knot gives. A short outward break, and the darkness
@@ -595,8 +602,8 @@ export class ParticleSystem {
               this.vz[i] += (oz / od) * 1.9 * dt;
 
               pull = 0;
-              drag = 0.5;
-              noiseAmp = 1.4;
+              drag = 0.6;
+              noiseAmp = 0.6;
               this.warmth[i] = Math.min(1, this.warmth[i] + dt * 1.6);
               this.size[i] = Math.max(0.45, this.size[i] - dt * 1.5);
             } else {
@@ -619,12 +626,12 @@ export class ParticleSystem {
             const a1 = (h - Math.floor(h)) * Math.PI * 2;
             const a2 = ((h * 1.7 - Math.floor(h * 1.7)) - 0.5) * 1.4;
 
-            const reach = 0.5 * (1 - Math.min(1, age / 5.5));
+            const reach = 0.45 * (1 - Math.min(1, age / 3.6));
             this.vx[i] += Math.cos(a1) * Math.cos(a2) * reach * dt;
             this.vy[i] += (Math.sin(a2) * 0.6 + 0.22) * reach * dt;
             this.vz[i] += Math.sin(a1) * Math.cos(a2) * reach * dt;
 
-            pull = Math.max(0, (age - 2.2) * 0.24);
+            pull = Math.max(0, (age - 1.3) * 0.34);
             drag = 1.05;
             noiseAmp = 0.07;
             this.size[i] = Math.min(this.size[i] + dt * 0.3, 2.4);
@@ -637,7 +644,7 @@ export class ParticleSystem {
         // wide can run out of life before reaching him and simply fade in
         // open air -- which reads as the offering being dropped rather
         // than received.
-        pull += Math.min(1, age / 6) * 0.9;
+        pull += Math.min(1, age / 3.5) * 1.15;
 
         const tdx = tx - x;
         const tdy = ty - y;
@@ -667,8 +674,8 @@ export class ParticleSystem {
         // The offering does not join a field around Bappa -- it picks a
         // point on his actual surface and sinks into it, because what it
         // is joining is the sculpture, not an aura.
-        if (dist < ARRIVAL_DISTANCE && this.warmth[i] > 0.55 && age > 0.8) {
-          this.absorbGlow = Math.min(4, this.absorbGlow + 1);
+        if (dist < ARRIVAL_DISTANCE && this.warmth[i] > 0.35 && age > 0.8) {
+          this.absorbGlow = Math.min(2, this.absorbGlow + 0.5);
           this.stage[i] = SETTLING;
           this.life[i] = 0;
           this.maxLife[i] = 1.6 + Math.random() * 0.9;

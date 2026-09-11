@@ -54,6 +54,8 @@ interface Voice {
 type BusName = 'room' | 'offering' | 'bappa' | 'visarjan' | 'final';
 
 const ORDER = Object.keys(ASSETS) as AssetName[];
+/** Heard only at the very end. */
+const FAREWELL_ASSETS: readonly AssetName[] = ['dhol-tasha', 'clay-crumble', 'gulal-dust', 'shankh-final'];
 /** Scattered hits are scheduled this far ahead of the clock. */
 const LOOKAHEAD = 0.12;
 /** Simultaneous scattered hits. Past this, a hit is dropped rather than a frame. */
@@ -374,9 +376,9 @@ export class AudioManager {
    * Fetch the assets before they are needed. Bytes only -- no context, which
    * browsers refuse before a gesture. The room first, the procession last.
    */
-  prefetch(): void {
+  prefetch(names: readonly AssetName[] = ORDER): void {
     if (typeof fetch === 'undefined') return;
-    for (const name of ORDER) {
+    for (const name of names) {
       if (this.bytes.has(name) || this.clips.has(name)) continue;
       this.bytes.set(
         name,
@@ -385,6 +387,18 @@ export class AudioManager {
           .catch(() => null)
       );
     }
+  }
+
+  /**
+   * Before any gesture: only what the room and an offering need. The
+   * procession and the farewell -- a megabyte and more -- wait until sound
+   * is actually wanted, and a phone on a data saver fetches nothing early.
+   */
+  prefetchEarly(): void {
+    const conn = (navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } })
+      .connection;
+    if (conn?.saveData || /(^|-)2g$/.test(conn?.effectiveType ?? '')) return;
+    this.prefetch(ORDER.filter((n) => !FAREWELL_ASSETS.includes(n)));
   }
 
   /**
@@ -896,7 +910,8 @@ export class AudioManager {
     if (!o) return;
     const now = this.now();
     this.releaseOffering(now, o.contacted ? 0.8 : 1.5);
-    this.music?.gain(dB(SPACE.musicDb), now + 4, 2.5);
+    // Back only after the closing line has had its silence.
+    this.music?.gain(dB(SPACE.musicDb), now + 5.5, 4);
   }
 
   private releaseOffering(at: number, tau: number) {

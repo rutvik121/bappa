@@ -42,7 +42,7 @@ const vertexShader = /* glsl */ `
     gl_Position = projectionMatrix * mv;
     // Perspective size attenuation, clamped so near particles never
     // blow out into screen-filling quads on a phone.
-    gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.1), 1.0, 9.0);
+    gl_PointSize = clamp(aSize * uScale / max(-mv.z, 0.1), 1.0, 6.0);
   }
 `;
 
@@ -67,11 +67,13 @@ const fragmentShader = /* glsl */ `
     float grain = 0.88 + 0.12 * sin(ang * 3.0 + vSeed * 9.0);
     core *= grain;
 
-    // Warmth ramp: cold ash -> fired clay -> ember -> point of light.
+    // Warmth ramp: cold ash -> fired clay -> ember -> warm gold. It stops
+    // at gold on purpose: a white point on black is a star, and an
+    // offering on its way to a clay murti must never read as space.
     vec3 ash   = vec3(0.055, 0.032, 0.026);
-    vec3 clay  = vec3(0.62, 0.26, 0.10);
-    vec3 ember = vec3(1.00, 0.55, 0.22);
-    vec3 light = vec3(1.00, 0.86, 0.62);
+    vec3 clay  = vec3(0.56, 0.25, 0.11);
+    vec3 ember = vec3(0.92, 0.50, 0.22);
+    vec3 light = vec3(1.00, 0.70, 0.40);
 
     vec3 col = mix(ash, clay, smoothstep(0.0, 0.42, vWarmth));
     col = mix(col, ember, smoothstep(0.38, 0.75, vWarmth));
@@ -86,7 +88,7 @@ const fragmentShader = /* glsl */ `
     // The three materials must never merge: clay is matte and heavy,
     // atmosphere is almost absent, and this -- the thing a person just
     // gave -- is the only luminous element in the frame.
-    gl_FragColor = vec4(col * 1.25, core * vAlpha);
+    gl_FragColor = vec4(col, core * vAlpha);
   }
 `;
 

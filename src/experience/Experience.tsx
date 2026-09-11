@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import dynamic from 'next/dynamic';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { AdaptiveDpr, Preload } from '@react-three/drei';
@@ -10,6 +10,7 @@ import { Scene } from './Scene';
 import { Overlay } from './ui/Overlay';
 import { getPerfProfile, degrade, type PerfProfile } from './systems/perf';
 import { useScene } from './state/sceneState';
+import { useBoot } from './state/boot';
 import { VISARJAN_DURATION, DARKNESS_HOLD } from './components/DissolveController';
 import { devToolsEnabled } from './dev/devtools';
 
@@ -73,6 +74,48 @@ function LoopStopper() {
   return null;
 }
 
+/**
+ * If the sculpture cannot be loaded or drawn -- a dropped connection, a GPU
+ * that gives up -- the canvas goes quietly and the words stay, and say so.
+ * Without this a single failed fetch took the whole page to black.
+ */
+class CanvasBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    useBoot.getState().fail('load');
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+function webglAvailable(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return Boolean(c.getContext('webgl2') ?? c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Phones drop the GL context under memory pressure, usually while the tab
+ * is in the background. At rest, the kindest recovery is a quiet reload;
+ * mid-offering it is left alone rather than interrupting the moment.
+ */
+function watchContext(canvas: HTMLCanvasElement) {
+  canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  canvas.addEventListener('webglcontextrestored', () => {
+    if (useScene.getState().state === 'IDLE') window.location.reload();
+  });
+}
+
 /** Applies renderer settings that R3F does not expose declaratively. */
 function RendererSetup() {
   const { gl } = useThree();
@@ -92,19 +135,26 @@ function RendererSetup() {
 export function Experience() {
   const [perf, setPerf] = useState<PerfProfile | null>(null);
   const [ready, setReady] = useState(false);
+  const failed = useBoot((s) => s.failed);
 
   // Tier detection touches the DOM and a probe canvas, so it must run
   // after mount -- this also keeps the module SSR-safe.
   useEffect(() => {
+    if (!webglAvailable()) {
+      useBoot.getState().fail('webgl');
+      return;
+    }
     setPerf(getPerfProfile());
   }, []);
 
   const dpr = useMemo<[number, number]>(() => perf?.dpr ?? [1, 1.5], [perf]);
 
-  if (!perf) return <div className="stage" aria-hidden />;
+  if (!perf && !failed) return <div className="stage" aria-hidden />;
 
   return (
     <div className="stage">
+      {perf && !failed && (
+      <CanvasBoundary>
       <Canvas
         dpr={dpr}
         shadows={perf.shadows}
@@ -123,7 +173,10 @@ export function Experience() {
         // rendering" warning. A timeout rather than requestAnimationFrame
         // on purpose -- a tab loaded in the background gets no frames, and
         // gating the interface on one would leave it hidden indefinitely.
-        onCreated={() => setTimeout(() => setReady(true), 0)}
+        onCreated={({ gl }) => {
+          watchContext(gl.domElement);
+          setTimeout(() => setReady(true), 0);
+        }}
       >
         <RendererSetup />
         <LoopStopper />
@@ -132,8 +185,10 @@ export function Experience() {
         <AdaptiveDpr pixelated={false} />
         <Preload all />
       </Canvas>
+      </CanvasBoundary>
+      )}
 
-      <Overlay ready={ready} />
+      <Overlay ready={ready || failed !== null} />
       {devToolsEnabled() && <DevPanel />}
     </div>
   );

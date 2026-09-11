@@ -13,7 +13,11 @@
  */
 export const FAREWELL_LINES = [
   { lines: ['Some things', 'aren’t meant to stay.'], at: 500, kind: 'verse' },
-  { lines: ['Ganpati Bappa Morya'], at: 7500, kind: 'chant' },
+  // Only for someone who left something with him, from this device. It is
+  // the one sentence that tells them the disappearance was also theirs --
+  // no archive, no replay, no thanks.
+  { lines: ['What you left went with him.'], at: 4300, kind: 'kept', onlyIfLeft: true },
+  { lines: ['Ganpati Bappa Morya'], at: 8200, kind: 'chant' },
 ] as const;
 
 /** Each line's fade in, in milliseconds. */
@@ -23,4 +27,4 @@ export const FAREWELL_FADE_MS = 3000;
 export const FAREWELL_OUT_MS = 17000;
 
 /** The line the distant shankh sounds under. */
-export const BELL_LINE = 1;
+export const BELL_LINE = 2;

@@ -62,6 +62,9 @@ export function CameraController() {
   const target = useRef(new THREE.Vector3());
   const dir = useRef(new THREE.Vector3());
   const still = useRef(false);
+  /** Horizontal placement of him in the frame, as a share of its width. */
+  const offset = useRef(0);
+  const first = useRef(true);
 
   // Handheld drift is atmosphere, and atmosphere is optional.
   useEffect(() => {
@@ -86,10 +89,15 @@ export function CameraController() {
     // height: pull back until both outer hands are in, rather than
     // cropping him into orange fragments at the edges of a phone.
     const aspect = size.width / Math.max(1, size.height);
+    // Landscape: the words take the left of the frame and he stands right
+    // of centre, as large as the height allows. Stacking both down the
+    // middle put the headline straight across his face on every laptop.
+    // Must agree with the landscape media query in globals.css.
+    const wide = aspect > 1.15 && size.width >= 900;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(shot.fov) / 2) * aspect;
     const needed = (FULL_WIDTH / 2 / tanHalf) * shot.fit;
     dir.current.copy(shot.pos).sub(shot.look);
-    const distance = Math.max(dir.current.length(), needed);
+    const distance = Math.max(dir.current.length() * (wide ? 0.88 : 1), needed);
     target.current.copy(shot.look).addScaledVector(dir.current.normalize(), distance);
 
     // A barely perceptible drift, so the frame is held by a person rather
@@ -117,6 +125,19 @@ export function CameraController() {
     if (Math.abs(cam.fov - shot.fov) > 0.01) {
       cam.fov += (shot.fov - cam.fov) * k;
       cam.updateProjectionMatrix();
+    }
+
+    // An off-axis frustum rather than a turned camera, so he is moved
+    // across the frame without being seen from an angle. He drifts back to
+    // the centre while he leaves, so the last words sit in the middle of
+    // the empty space he was in.
+    const offTarget = wide && state !== 'VISARJAN' ? 0.16 : 0;
+    offset.current = first.current ? offTarget : offset.current + (offTarget - offset.current) * k;
+    first.current = false;
+    if (Math.abs(offset.current) > 0.0005) {
+      cam.setViewOffset(size.width, size.height, -offset.current * size.width, 0, size.width, size.height);
+    } else if (cam.view?.enabled) {
+      cam.clearViewOffset();
     }
   });
 

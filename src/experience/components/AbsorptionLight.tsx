@@ -40,7 +40,9 @@ export function AbsorptionLight({
 
     // The clay itself now lights up where an offering lands, so this is
     // only a supporting fill -- and it goes out with him.
-    light.current.intensity = smoothed.current * 1.5 * breath;
+    // Kept low: any more and the clay reads as lit from inside by fire --
+    // an orange glow across his whole body rather than something received.
+    light.current.intensity = smoothed.current * 0.45 * breath;
   });
 
   return (

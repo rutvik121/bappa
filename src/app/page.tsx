@@ -1,11 +1,13 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { Prelude } from '@/experience/ui/Prelude';
 
 /**
  * The whole experience is client-only and lazily loaded: three.js, the
  * renderer and the GLB are ~700KB gzipped that no crawler needs and that
- * a phone should not parse before the page has painted its black ground.
+ * a phone should not parse before the page has painted. The words do not
+ * wait for any of it -- the prelude is in the HTML.
  */
 const Experience = dynamic(
   () => import('@/experience/Experience').then((m) => m.Experience),
@@ -15,6 +17,7 @@ const Experience = dynamic(
 export default function Page() {
   return (
     <main>
+      <Prelude />
       <Experience />
     </main>
   );

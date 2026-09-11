@@ -143,19 +143,21 @@ export function SmokeSystem({ perf }: { perf: PerfProfile }) {
     // Barely there. Heavier than this and the two agarbatti ribbons read
     // as orange streaks running the height of the frame, competing with
     // the sculpture they are meant to be burning in front of.
-    let target = 0.028;
-    if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') target = 0.038;
-    if (state === 'TRANSFORMING') target = 0.034;
+    // On a phone the camera stands back far enough that both ribbons sit
+    // at the edges of the frame, where they read as vertical scratches.
+    let target = 0.017;
+    if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') target = 0.022;
+    if (state === 'TRANSFORMING') target = 0.02;
     // A vighna thickens the air a little; a wish clears it.
-    if (mood === 'VIGHNA') target += 0.012;
-    if (mood === 'WISH') target -= 0.01;
+    if (mood === 'VIGHNA') target += 0.008;
+    if (mood === 'WISH') target -= 0.006;
     // The room empties of him and of his incense.
     //
     // Driven straight off elapsed rather than eased toward a target: an
     // easing only reaches zero if enough frames happen to be drawn, and
     // "nothing remains" has to be a guarantee rather than a tendency.
     if (state === 'VISARJAN') {
-      uniforms.uOpacity.value = Math.max(0, 0.028 * (1 - elapsed / 34));
+      uniforms.uOpacity.value = Math.max(0, 0.017 * (1 - elapsed / 34));
       return;
     }
 
