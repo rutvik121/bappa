@@ -33,6 +33,21 @@ const LINE_HEIGHT = 1.5;
  * few to read as letterforms -- so the text is drawn large and the canvas
  * height is kept bounded by shrinking the face as the text grows.
  */
+/**
+ * The serif stack the page actually resolved, read from the CSS variable
+ * next/font sets on <html>, so the canvas draws with the same face the
+ * visitor wrote in.
+ */
+function readSerifFamily(): string {
+  const fallback = '"Cormorant Garamond", Georgia, serif';
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--font-serif').trim();
+    return v ? `${v}, ${fallback}` : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function fontSizeFor(length: number): number {
   if (length <= 24) return 150;
   if (length <= 60) return 110;
@@ -49,7 +64,9 @@ export function sampleTextPoints(text: string, maxPoints: number): SampledText |
   if (!ctx) return null;
 
   const fontPx = fontSizeFor(trimmed.length);
-  const font = `300 ${fontPx}px ui-sans-serif, -apple-system, "Segoe UI", Inter, sans-serif`;
+  // The same serif the visitor wrote in, so the words that assemble out of
+  // particles are recognisably the words they just wrote.
+  const font = `500 ${fontPx}px ${readSerifFamily()}`;
 
   // --- wrap to the canvas width, mirroring how the input reads on screen ---
   ctx.font = font;

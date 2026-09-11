@@ -74,7 +74,8 @@ const vertexShader = /* glsl */ `
     p += drift * ease * 0.10;
 
     // Loose dust that never became clay still has to go.
-    float looseAlpha = loose * mix(0.30, 0.95, gather) * (1.0 - smoothstep(0.0, 0.35, uDissolve));
+    // Dense enough to hold the surface: sparse specks read as absence.
+    float looseAlpha = loose * mix(0.55, 1.0, gather) * (1.0 - smoothstep(0.0, 0.35, uDissolve));
 
     // Released material: bright as it comes away, gone by the end of its
     // own short life.
@@ -116,14 +117,18 @@ const fragmentShader = /* glsl */ `
     // Earth, not light. Dark suspension warms toward terracotta as it
     // gathers -- and on the way out, past terracotta into a small warm
     // point of light, which is the last thing seen of him.
-    vec3 dust = vec3(0.32, 0.18, 0.11);
-    vec3 clay = vec3(0.66, 0.36, 0.19);
+    // Warm enough to read as terracotta dust against the black. Darker
+    // than this and an unfinished passage of him -- sometimes part of his
+    // face -- read as a burnt hole in the sculpture rather than as clay
+    // that has not yet settled.
+    vec3 dust = vec3(0.5, 0.28, 0.16);
+    vec3 clay = vec3(0.74, 0.42, 0.23);
     vec3 light = vec3(1.0, 0.78, 0.48);
 
     vec3 col = mix(dust, clay, vGather);
     col = mix(col, light, smoothstep(0.35, 1.0, vRelease));
 
-    gl_FragColor = vec4(col, core * vAlpha * 0.42);
+    gl_FragColor = vec4(col, core * vAlpha * 0.62);
   }
 `;
 

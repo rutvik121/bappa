@@ -32,21 +32,47 @@ function smoothNoise(x: number, y: number, z: number): number {
 }
 
 /**
- * @param heightNorm 0 at the base of the sculpture, 1 at the crown
- *
- * Mostly noise, so material arrives scattered across the whole form and a
- * visitor on day one still reads a Ganpati rather than a pair of feet.
- * The height term is a light bias, not a fill order -- it is what makes
- * the crown and the tips of the ears the last things to finish.
+ * The shape of the sculpture, for normalising positions against it.
  */
-export function formationWeight(
-  x: number,
-  y: number,
-  z: number,
-  heightNorm: number
-): number {
+export interface FormBounds {
+  minY: number;
+  invHeight: number;
+  cx: number;
+  cz: number;
+  invHalfX: number;
+  invHalfZ: number;
+}
+
+export function formBounds(geometry: THREE.BufferGeometry): FormBounds {
+  geometry.computeBoundingBox();
+  const bb = geometry.boundingBox!;
+  return {
+    minY: bb.min.y,
+    invHeight: 1 / Math.max(1e-4, bb.max.y - bb.min.y),
+    cx: (bb.min.x + bb.max.x) / 2,
+    cz: (bb.min.z + bb.max.z) / 2,
+    invHalfX: 2 / Math.max(1e-4, bb.max.x - bb.min.x),
+    invHalfZ: 2 / Math.max(1e-4, bb.max.z - bb.min.z),
+  };
+}
+
+/**
+ * When each part of him arrives.
+ *
+ * He forms from the centre out: the face, the trunk and the body first,
+ * the outer hands, the ears and the edges of the base last -- the way a
+ * murti is finished, and so that no visitor on any day meets a Bappa whose
+ * face is the part still missing. Visarjan walks the same order backwards,
+ * so the extremities are the first to let go and the face the last.
+ *
+ * Noise keeps the unfinished passages irregular, like clay still being
+ * worked, rather than a clean radial wipe.
+ */
+export function formationWeight(x: number, y: number, z: number, b: FormBounds): number {
   const n = smoothNoise(x * 6.5, y * 6.5, z * 6.5);
-  return Math.min(1, Math.max(0, n * 0.68 + heightNorm * 0.32));
+  const heightNorm = (y - b.minY) * b.invHeight;
+  const radial = Math.min(1, Math.hypot((x - b.cx) * b.invHalfX, (z - b.cz) * b.invHalfZ));
+  return Math.min(1, Math.max(0, n * 0.38 + radial * 0.5 + heightNorm * 0.12));
 }
 
 export interface SurfaceSamples {
@@ -99,9 +125,7 @@ export function sampleSurface(geometry: THREE.BufferGeometry, count: number): Su
     cumulative[t] = total;
   }
 
-  geometry.computeBoundingBox();
-  const bb = geometry.boundingBox!;
-  const invHeight = 1 / Math.max(1e-4, bb.max.y - bb.min.y);
+  const bounds = formBounds(geometry);
 
   const positions = new Float32Array(count * 3);
   const weights = new Float32Array(count);
@@ -142,7 +166,7 @@ export function sampleSurface(geometry: THREE.BufferGeometry, count: number): Su
     positions[i * 3] = x;
     positions[i * 3 + 1] = y;
     positions[i * 3 + 2] = z;
-    weights[i] = formationWeight(x, y, z, (y - bb.min.y) * invHeight);
+    weights[i] = formationWeight(x, y, z, bounds);
     seeds[i] = Math.random();
   }
 
@@ -161,16 +185,11 @@ export function bakeVertexWeights(geometry: THREE.BufferGeometry): void {
   if (geometry.getAttribute('aFormWeight')) return;
 
   const pos = geometry.getAttribute('position') as THREE.BufferAttribute;
-  geometry.computeBoundingBox();
-  const bb = geometry.boundingBox!;
-  const invHeight = 1 / Math.max(1e-4, bb.max.y - bb.min.y);
+  const bounds = formBounds(geometry);
 
   const out = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const y = pos.getY(i);
-    const z = pos.getZ(i);
-    out[i] = formationWeight(x, y, z, (y - bb.min.y) * invHeight);
+    out[i] = formationWeight(pos.getX(i), pos.getY(i), pos.getZ(i), bounds);
   }
 
   geometry.setAttribute('aFormWeight', new THREE.BufferAttribute(out, 1));

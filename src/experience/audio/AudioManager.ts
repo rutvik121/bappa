@@ -9,12 +9,11 @@ import {
   type OfferingMotion,
 } from './events';
 import {
-  ABSORB,
-  BAPPA,
   BREAK,
   FINAL,
   MASTER,
   OFFERING,
+  RECEIVE,
   SPACE,
   VISARJAN,
   dB,
@@ -26,10 +25,10 @@ import {
  * The room, and every sound made in it.
  *
  *   SPACE           tanpura and bansuri in the hall; the pandal outside at night
- *   OFFERING        a puja sound for each offering, from its gathering to its contact
+ *   OFFERING        each offering approaches in its own way
  *   TRANSFORMATION  the moment a thing stops being what it was (the coconut, the bansuri)
- *   BAPPA           the temple ghanta, heard only when something becomes part of him
- *   VISARJAN        a dhol-tasha procession that recedes as he dissolves
+ *   BAPPA           received: a touch on clay, and the clay body answering -- the same for all
+ *   VISARJAN        the sound being taken away as he goes
  *   SILENCE         a state: every bus cut, every source stopped, context released
  *
  * Sound follows the simulation, not a timeline. The director reports what
@@ -167,8 +166,8 @@ interface ScatterOptions {
 
 /**
  * Hits drawn from a few takes of the same sound, at a rate that can change
- * every frame. Poisson-timed so it reads as something heavy moving, not as
- * a rhythm; never the same take twice running.
+ * every frame. Poisson-timed so it reads as material moving, not as a
+ * rhythm; never the same take twice running.
  */
 class Scatter implements Voice {
   rate = 0;
@@ -211,7 +210,7 @@ class Scatter implements Voice {
     }
   }
 
-  single(at: number, level = 1) {
+  single(at: number, level = 1, db?: number) {
     const ctx = this.m.context;
     if (!ctx || this.names.length === 0) return;
     let index = Math.floor(Math.random() * this.names.length);
@@ -227,7 +226,7 @@ class Scatter implements Voice {
       src.buffer = clip.buffer;
       src.playbackRate.value = rate;
       const g = ctx.createGain();
-      g.gain.value = dB(this.o.db) * level * between(0.55, 1);
+      g.gain.value = dB(db ?? this.o.db) * level * between(0.55, 1);
       const p = this.m.createPanner(this.center + (Math.random() * 2 - 1) * this.o.spread);
       src.connect(g);
       if (p) {
@@ -263,8 +262,9 @@ interface Offering {
   seed: number;
   stage: 'start' | 'gather' | 'transform' | 'travel';
   gather: Scatter;
+  /** Tiny touches on clay as the rest of the offering enters him. */
+  touches: Scatter;
   carrier: Layer | null;
-  rice: Layer | null;
   contacted: boolean;
   /** Carrier trim after contact: the offering has gone inside him. */
   duck: number;
@@ -275,6 +275,7 @@ interface Offering {
 interface VisarjanVoices {
   dhol: Layer | null;
   crumble: Layer | null;
+  touches: Scatter;
   last: number;
 }
 
@@ -284,9 +285,6 @@ interface ShotOptions {
   rate?: number;
   pan?: number;
   cutoff?: number;
-  cutoffTo?: number;
-  cutoffAfter?: number;
-  cutoffTau?: number;
   wet?: number;
   wetTo?: number;
   wetTau?: number;
@@ -331,6 +329,7 @@ export class AudioManager {
 
   private offering: Offering | null = null;
   private resonance: Voice | null = null;
+  private lastResonance = -1;
   private visarjan: VisarjanVoices | null = null;
 
   /* ---------------- plumbing used by voices ---------------- */
@@ -508,8 +507,7 @@ export class AudioManager {
     shelf.type = 'highshelf';
     shelf.frequency.value = 9000;
     shelf.gain.value = MASTER.airShelfDb;
-    // The dhol-tasha is the loudest thing in the piece; this keeps it, and
-    // everything else, clear of clipping on any device.
+    // A safety, not a sound: nothing in the score should reach it.
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -8;
     limiter.knee.value = 6;
@@ -554,7 +552,7 @@ export class AudioManager {
   /**
    * The hall itself, generated rather than downloaded: diffuse noise whose
    * highs die first and whose lows hang, with a few early reflections off
-   * stone -- the space the bells and the shankh ring in.
+   * stone -- the space the clay and the shankh ring in.
    */
   private impulse(): AudioBuffer {
     const ctx = this.ctx!;
@@ -663,7 +661,12 @@ export class AudioManager {
       this.nextWander = now + between(SPACE.wanderGap[0], SPACE.wanderGap[1]);
     }
 
-    this.offering?.gather.pump(now);
+    const o = this.offering;
+    if (o) {
+      o.gather.pump(now);
+      o.touches.pump(now);
+    }
+    this.visarjan?.touches.pump(now);
   }
 
   /* ---------------- events ---------------- */
@@ -691,9 +694,9 @@ export class AudioManager {
       case 'OFFERING_BREAK':
         return this.playOfferingBreak(p.pan ?? 0);
       case 'OFFERING_CONTACT':
-        return this.playOfferingContact(p.pan ?? 0);
+        return this.playOfferingContact(p.pan ?? 0, p.amount ?? 0);
       case 'OFFERING_ABSORBED':
-        return this.playOfferingAbsorbed(p.amount ?? 0, p.pan ?? 0);
+        return this.playOfferingAbsorbed();
       case 'VISARJAN_STARTED':
         return this.playVisarjanStart();
       case 'VISARJAN_MATERIAL_RELEASE':
@@ -749,7 +752,7 @@ export class AudioManager {
     this.nextWander = now + 6;
   }
 
-  /* ---------------- OFFERING ---------------- */
+  /* ---------------- OFFERING: the approach ---------------- */
 
   /** START: nothing yet but the room stepping back. A breath before the ritual. */
   playOfferingStart(type: ContributionKind, seed = Math.random()): void {
@@ -769,8 +772,13 @@ export class AudioManager {
         pitch: [0.94, 1.04],
         spread: 0.3,
       }),
+      touches: new Scatter(this, RECEIVE.touch, this.bus('bappa'), {
+        db: RECEIVE.arrivalDb,
+        wet: 0.35,
+        pitch: [0.85, 1.1],
+        spread: 0.3,
+      }),
       carrier: null,
-      rice: null,
       contacted: false,
       duck: 1,
       last: -1,
@@ -809,9 +817,7 @@ export class AudioManager {
   playOfferingTravel(): void {
     const o = this.offering;
     if (!o) return;
-    const now = this.now();
     o.stage = 'travel';
-    o.rice = this.layer('akshata-rice', 'bappa', now, { cutoff: 9000, wet: ABSORB.wet });
   }
 
   private offeringMotion(m: OfferingMotion) {
@@ -850,9 +856,11 @@ export class AudioManager {
       }
 
       o.gather.center = m.pan * 0.5;
-      // Akshata on the thali: as loud as the offering is arriving.
-      o.rice?.gain(dB(ABSORB.riceDb) * clamp01(m.arrivalRate / ABSORB.fullShare), now, 0.15);
-      o.rice?.pan(m.pan * 0.3, now, 0.5);
+      // The rest of it entering him: tiny touches, as many as are arriving.
+      if (o.contacted) {
+        o.touches.rate = Math.min(RECEIVE.arrivalMax, m.arrivalRate * RECEIVE.arrivalRate);
+        o.touches.center = m.pan * 0.3;
+      }
     }
 
     this.tick();
@@ -865,71 +873,70 @@ export class AudioManager {
   }
 
   /**
-   * CONTACT. Emitted from the frame the first grain entered the clay: the
-   * ghanti, the high bell, the dhol boom, the shankh -- blooming into the
-   * hall as it goes inside him.
+   * CONTACT. Emitted from the frame the first grain entered the clay, and
+   * the same for every offering: a tiny touch on dry clay exactly then, and
+   * the clay body answering a breath later. Bappa received it.
    */
-  playOfferingContact(pan = 0): void {
+  playOfferingContact(pan = 0, build = 0): void {
     const o = this.offering;
     if (!o || o.contacted) return;
     const now = this.now();
     o.contacted = true;
     o.pan = pan;
-    o.duck = 0.5;
-    const s = o.spec;
+    o.duck = 0.45;
 
-    this.shot(s.contact, now, {
-      db: s.contactDb,
-      bus: 'offering',
-      rate: 1 + (o.seed - 0.5) * 0.012,
-      pan: pan * 0.4,
-      wet: 0.08,
-      wetTo: s.contactWet,
-      wetTau: 0.35,
-    });
+    o.touches.center = pan * 0.4;
+    o.touches.single(now, 1, RECEIVE.touchDb);
+    this.playBappaResonance(build, pan, now + RECEIVE.resonanceDelay);
   }
 
-  private playOfferingAbsorbed(build: number, pan: number) {
+  /** Taken in. The approach lets go; the music returns once the clay has rung out. */
+  private playOfferingAbsorbed() {
     const o = this.offering;
     if (!o) return;
     const now = this.now();
-    if (o.contacted) this.playBappaResonance(build, pan || o.pan);
     this.releaseOffering(now, o.contacted ? 0.8 : 1.5);
-    // The music returns once the ghanta has had its moment.
-    this.music?.gain(dB(SPACE.musicDb), now + 3, 2.5);
+    this.music?.gain(dB(SPACE.musicDb), now + 4, 2.5);
   }
 
   private releaseOffering(at: number, tau: number) {
     const o = this.offering;
     if (!o) return;
     o.carrier?.stop(at, tau);
-    o.rice?.stop(at, tau * 0.6);
     o.gather.stop(at, 0.6);
+    o.touches.stop(at, 0.8);
     this.offering = null;
   }
 
-  /* ---------------- BAPPA ---------------- */
+  /* ---------------- BAPPA: received ---------------- */
 
   /**
-   * The temple ghanta every offering resolves into, whatever it was. One
-   * still ringing is let go rather than stacked, and it rings a little
-   * fuller and further as he is built.
+   * The clay answering. One of a few takes of the same terracotta body, so
+   * repeats are never identical; one still ringing is let go rather than
+   * stacked; a little fuller and further as he is built.
    */
-  playBappaResonance(build = 0, pan = 0): void {
+  playBappaResonance(build = 0, pan = 0, at = this.now()): void {
     if (!this.ctx || !this.buses) return;
-    const now = this.now();
-    this.resonance?.stop(now, BAPPA.stealTau);
+    this.resonance?.stop(at, RECEIVE.stealTau);
+
+    const names = RECEIVE.resonance;
+    let index = Math.floor(Math.random() * names.length);
+    if (names.length > 1 && index === this.lastResonance) index = (index + 1) % names.length;
+    this.lastResonance = index;
+
     const richness = Math.pow(clamp01(build), 0.8);
-    this.resonance = this.shot('temple-ghanta', now, {
-      db: BAPPA.ghantaDb + BAPPA.richnessDb * richness,
+    this.resonance = this.shot(names[index], at, {
+      db: RECEIVE.resonanceDb + RECEIVE.richnessDb * richness,
       bus: 'bappa',
-      rate: 1 + (Math.random() - 0.5) * 0.008,
+      rate: 1 + (Math.random() - 0.5) * 0.01,
       pan: pan * 0.25,
-      wet: BAPPA.ghantaWet + BAPPA.richnessWet * richness,
+      wet: RECEIVE.wetFrom,
+      wetTo: RECEIVE.wetTo + 0.08 * richness,
+      wetTau: 0.4,
     });
   }
 
-  /* ---------------- VISARJAN ---------------- */
+  /* ---------------- VISARJAN: the sound taken away ---------------- */
 
   /** Stage 1. The music stops. Only the pandal, very low, remains. */
   playVisarjanStart(): void {
@@ -939,10 +946,20 @@ export class AudioManager {
     this.music?.stop(now, VISARJAN.musicTau);
     this.music = null;
     this.pandal?.gain(dB(SPACE.pandalDb + sample(VISARJAN.pandalTrim, 0)), now, 1);
-    this.visarjan = { dhol: null, crumble: null, last: -1 };
+    this.visarjan = {
+      dhol: null,
+      crumble: null,
+      touches: new Scatter(this, RECEIVE.touch, this.bus('visarjan'), {
+        db: VISARJAN.touchDb,
+        wet: 0.6,
+        pitch: [1.0, 1.25],
+        spread: 0.8,
+      }),
+      last: -1,
+    };
   }
 
-  /** Stage 2. The dhol-tasha pathak arrives, still silent here; the curve brings it in. */
+  /** Stage 2. The layers that will carry him away, still silent here. */
   playVisarjanMaterial(): void {
     this.ensureVisarjanLayers(this.now());
   }
@@ -950,14 +967,15 @@ export class AudioManager {
   private ensureVisarjanLayers(now: number) {
     const v = this.visarjan;
     if (!v) return;
-    v.dhol ??= this.layer('dhol-tasha', 'visarjan', now, { cutoff: 16000, wet: 0.08, randomStart: false });
+    v.dhol ??= this.layer('dhol-tasha', 'visarjan', now, { cutoff: 2400, wet: 0.45 });
     v.crumble ??= this.layer('clay-crumble', 'visarjan', now, { cutoff: 9000, wet: 0.25 });
   }
 
   /**
-   * Stages 2-5 as curves over dissolve: the procession builds through the
-   * breakdown and carries the particle Bappa, then recedes -- quieter,
-   * darker, further away -- as what is left of him drifts off.
+   * Stages 2-5 as curves over dissolve: material moving, clay coming away,
+   * a procession very far off that only recedes, and then tiny touches
+   * further and further apart as the last of him drifts off. Every level
+   * falls as he goes.
    */
   private visarjanDissolve(d: number) {
     const v = this.visarjan;
@@ -968,23 +986,26 @@ export class AudioManager {
     this.ensureVisarjanLayers(now);
 
     const V = VISARJAN;
-    v.dhol?.gain(dB(sample(V.dholDb, d)), now, 0.6);
-    v.dhol?.cutoff(sample(V.dholCutoff, d), now, 0.8);
-    v.dhol?.wet(sample(V.dholWet, d), now, 0.8);
+    v.dhol?.gain(dB(sample(V.dholDb, d)), now, 0.8);
+    v.dhol?.cutoff(sample(V.dholCutoff, d), now, 1);
+    v.dhol?.wet(sample(V.dholWet, d), now, 1);
     v.crumble?.gain(dB(sample(V.crumbleDb, d)), now, 0.5);
+    v.touches.rate = sample(V.touchRate, d);
     this.pandal?.gain(dB(SPACE.pandalDb + sample(V.pandalTrim, d)), now, 0.8);
+
+    this.tick();
   }
 
-  /** Stage 5 begins: gulal thrown as he lets go of his shape. */
+  /** Stage 5 begins: gulal on the air as he lets go of his shape. */
   playVisarjanRelease(): void {
     if (!this.visarjan) return;
-    this.shot('gulal-dust', this.now(), { db: VISARJAN.gulalDb, bus: 'visarjan', wet: 0.4 });
+    this.shot('gulal-dust', this.now(), { db: VISARJAN.gulalDb, bus: 'visarjan', wet: 0.5 });
   }
 
   /**
-   * Stage 6. Nothing. Not a fade -- the procession has already receded.
-   * Every bus and the reverb tail are cut in a few milliseconds and every
-   * source is stopped.
+   * Stage 6. Nothing. Not a fade -- the fade has already happened. Every
+   * bus and the reverb tail are cut in a few milliseconds and every source
+   * is stopped.
    */
   stopAll(): void {
     if (!this.ctx || !this.buses) return;
@@ -1010,13 +1031,14 @@ export class AudioManager {
     const v = this.visarjan;
     v?.dhol?.stop(end, 0.01);
     v?.crumble?.stop(end, 0.01);
+    v?.touches.stop(end, 0.01);
     this.visarjan = null;
   }
 
   /**
-   * One shankh, far away across the water, under GANPATI BAPPA MORYA. The
-   * only sound after the silence, once. When it has rung out the context is
-   * suspended: from then on the piece costs nothing at all.
+   * One shankh, impossibly far away, under the chant. The only sound after
+   * the silence, once. When it has rung out the context is suspended: from
+   * then on the piece costs nothing at all.
    */
   playFinalBell(): void {
     if (!this.ctx || !this.buses || this.finished) return;
@@ -1045,6 +1067,7 @@ export class AudioManager {
     this.finished = false;
     this.visarjan?.dhol?.stop(now, 0.5);
     this.visarjan?.crumble?.stop(now, 0.5);
+    this.visarjan?.touches.stop(now, 0.5);
     this.visarjan = null;
     this.pandal?.stop(now, 0.5);
     this.pandal = null;
@@ -1079,9 +1102,6 @@ export class AudioManager {
       filter.type = 'lowpass';
       filter.Q.value = 0.5;
       filter.frequency.value = o.cutoff ?? 18000;
-      if (o.cutoffTo !== undefined) {
-        filter.frequency.setTargetAtTime(o.cutoffTo, at + (o.cutoffAfter ?? 0), o.cutoffTau ?? 0.5);
-      }
 
       const panner = this.createPanner(o.pan ?? 0);
       const gain = ctx.createGain();

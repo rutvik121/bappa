@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene } from '../state/sceneState';
-import { formationWeight } from '../systems/SurfaceSampler';
+import { formBounds, formationWeight } from '../systems/SurfaceSampler';
 import type { GanpatiHandle } from './GanpatiModel';
 
 /**
@@ -142,13 +142,11 @@ export function buildSurfaceSamples(
   const weights = new Float32Array(n);
   const v = new THREE.Vector3();
 
-  geometry.computeBoundingBox();
-  const bb = geometry.boundingBox!;
-  const invH = 1 / Math.max(1e-4, bb.max.y - bb.min.y);
+  const bounds = formBounds(geometry);
 
   for (let i = 0; i < n; i++) {
     v.fromBufferAttribute(src, i * stride);
-    weights[i] = formationWeight(v.x, v.y, v.z, (v.y - bb.min.y) * invH);
+    weights[i] = formationWeight(v.x, v.y, v.z, bounds);
 
     v.applyMatrix4(matrix);
     points[i * 3] = v.x;

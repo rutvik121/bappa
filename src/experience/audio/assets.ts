@@ -20,19 +20,11 @@ export const ASSETS = {
     "kind": "oneshot",
     "channels": 1
   },
-  "ghanti": {
-    "kind": "oneshot",
-    "channels": 1
-  },
   "ghungroo": {
     "kind": "oneshot",
     "channels": 1
   },
   "bansuri-rise": {
-    "kind": "oneshot",
-    "channels": 1
-  },
-  "bell-high": {
     "kind": "oneshot",
     "channels": 1
   },
@@ -57,10 +49,6 @@ export const ASSETS = {
     "kind": "oneshot",
     "channels": 1
   },
-  "dhol-boom": {
-    "kind": "oneshot",
-    "channels": 1
-  },
   "diya-light": {
     "kind": "oneshot",
     "channels": 1
@@ -70,13 +58,28 @@ export const ASSETS = {
     "loop": 7.3979,
     "channels": 1
   },
-  "shankh-short": {
+  "clay-touch-1": {
     "kind": "oneshot",
     "channels": 1
   },
-  "akshata-rice": {
-    "kind": "loop",
-    "loop": 5.3998,
+  "clay-touch-2": {
+    "kind": "oneshot",
+    "channels": 1
+  },
+  "clay-touch-3": {
+    "kind": "oneshot",
+    "channels": 1
+  },
+  "ghatam-1": {
+    "kind": "oneshot",
+    "channels": 1
+  },
+  "ghatam-2": {
+    "kind": "oneshot",
+    "channels": 1
+  },
+  "ghatam-3": {
+    "kind": "oneshot",
     "channels": 1
   },
   "temple-ghanta": {

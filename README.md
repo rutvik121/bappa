@@ -126,66 +126,110 @@ The text is still read exactly once and wiped in the same call. What is
 briefly legible is legible only to its author, on their own screen, for
 about two seconds.
 
-## The first five seconds
+## The experience
 
-The wordmark alone never answered "what is this?" — it named the thing
-without saying what it does. The landing now states the mechanism, in a
-strict editorial hierarchy and with no cards, panels or navigation.
+```
+ORIENTATION → CHOICE → PERSONAL OFFERING → TRANSFORMATION → ABSORPTION
+→ EMOTIONAL RESPONSE → STILLNESS
+```
+
+Bappa is the hero of every frame. The interface is the least language
+that lets the next thing happen, and it is absent while the offering
+becomes material.
+
+### Orientation
 
 ```
 BAPPA 2026
 
-A Ganpati built by everyone
-on the Internet.
+Leave something
+with Bappa.
 
-Leave a wish, gratitude, an obstacle or a promise.
-It becomes part of him.
+A wish. A gratitude. A burden. A promise.
+He becomes what we leave behind.
 
-        [ Leave something with Bappa ]
-        1,204 offerings have become part of him.
+                                   7 DAYS REMAIN
+                                   He’s taking shape.
 
-09 DAYS
-11 HOURS
-59 MINUTES
-9 days left to build him
+                                [ MAKE AN OFFERING ]
+
+                  1,24,800 offerings have become part of Bappa.
 ```
 
-The primary statement is the only copy given real presence, and it is
-set in sentence case rather than the letterspaced caps used for the
-brand, so it reads as a sentence and not as a label. *The Internet's
-Ganpati* is gone from the first screen; it was a descriptor standing
-where an explanation needed to be.
+The tally uses Indian digit grouping and appears only once there is
+something to count — at zero it is omitted rather than turned into a
+nudge. After six seconds without movement the supporting lines step back
+to about 60%; the headline never dims.
 
-**It steps back once it has been read.** After 5.5 seconds of inactivity
-the secondary line and the countdown dim and the primary statement drops
-to a quieter weight — enough that Bappa is what is left, never so much
-that a returning eye cannot read it. Any pointer movement brings it back.
+**The time is part of the ritual, not a timer.** No hours or minutes
+ticking — a count of days and one line that changes with the festival:
 
-**The countdown** is cornered and quiet: no boxes, no colons, no seconds
-ticking. It carries the stakes — there is a limited time in which anyone
-can still add to him — without reading as a promotional timer. The label
-under it is contextual, and on the final day stops counting altogether:
+| | count | line |
+| --- | --- | --- |
+| before | BAPPA ARRIVES IN 3 DAYS | 10 days. Then Visarjan. |
+| day 1 | 10 DAYS REMAIN | He’s only beginning. |
+| days 2–8 | 9…3 DAYS REMAIN | He’s taking shape. |
+| day 9 | — | Tomorrow, we let him go. |
+| day 10 | 14 HOURS REMAIN | Today, we let him go. |
 
-| | |
-| --- | --- |
-| day 1 | 9 days left to build him |
-| day 5 | 5 days left to build him |
-| day 9 | 1 day left to build him |
-| day 10 | today, we let him go |
+### Choice: four invitations
+
+Not four categories in a form. Each has a mark (a diya flame, a rising
+path, a stone, a sprout), a name, one line, and its own action. Choosing
+one brings its accent into the edge of the card, steps the other three
+back, and changes the room very slightly — a warmer key for gratitude, a
+lifted rim and more light in the air for a wish, a darker, thicker room
+for a vighna, a livelier fill for a promise.
+
+| | line | action | while writing | last gesture | afterwards |
+| --- | --- | --- | --- | --- | --- |
+| **Gratitude** | For what you’ve been given. | Leave gratitude | What are you grateful for? | Leave it with Bappa | *For what you have.* |
+| **Wish** | For what you hope for. | Leave a wish | What are you hoping for? | Place your wish | *May it find its way.* |
+| **Vighna** | For what weighs on you. | Set down a burden | What are you ready to leave behind? | Give it to Vighnaharta | *Leave it here.* |
+| **Promise** | For who you mean to become. | Make a promise | What will you promise yourself? | Make the promise | *Now, keep it.* |
+
+"Submit" and "Continue" appear nowhere. "Not now" and a back control
+make every step reversible, and Escape steps back one gesture at a time.
+
+### Personal offering
+
+A large question, a quiet placeholder, a single hairline under the
+words, and "Only you will ever read this." No counter, no validation
+chrome. On a phone the writing sits high in the frame, where the keyboard
+cannot cover it; the particles then form where the words were and travel
+down to him.
+
+### Emotional response
+
+The closing line waits for the offering to have actually been taken in —
+the last grain sunk into the clay — then a breath of stillness, then the
+line: fades in, holds, fades out, and the room is at rest. It completes
+the feeling and never describes the animation.
+
+### Readability
+
+Two faces: Cormorant Garamond for everything said to the visitor, Hanken
+Grotesk for labels and actions. Three levels of ink, the quietest still
+AA against the ground. Text over the scene sits on soft gradient scrims
+that exist only where the words are (and not at all while the offering
+travels), with a faint shadow — no panels, no boxes. Visible focus rings,
+comfortable touch targets, safe-area insets, zoom left enabled, and
+reduced-motion honoured for fades and camera drift.
+
+### Composition
+
+The camera fits Bappa to the viewport's width on narrow screens, so a
+phone never crops his outer hands into fragments at the edges, and leaves
+dark bands above and below him for the headline and the action. It holds
+still while an offering travels — the offering is the event.
 
 ### One clock
 
 `state/festival.ts` owns `FESTIVAL_START`, `FESTIVAL_END`, `VISARJAN_TIME`,
-`getFestivalStatus()` and `getCountdown()`. Nothing else computes a date.
-The countdown, the day-to-formation mapping and the automatic Visarjan
-all read the same shifted clock, so the development day controls move the
-copy, the countdown and the sculpture together rather than letting them
-disagree.
-
-On mobile the statement keeps the top and stays readable, and the
-countdown gives up its corner to become one horizontal line above the
-call to action — a stacked clock in a corner competes with the sculpture
-at that width, and at 13vh it landed directly on top of the CTA.
+`getFestivalStatus()`, `getCountdown()` and `describeTime()`. Nothing else
+computes a date. The countdown copy, the day-to-formation mapping and the
+automatic Visarjan all read the same shifted clock, so the development day
+controls move the copy and the sculpture together.
 
 ## Ten days, and a collective
 
@@ -230,11 +274,13 @@ backwards — `if (vFormWeight > 1.0 - uDissolve) discard` — so the last
 things to form are the first to let go. One material system, both
 directions.
 
-**Weights are mostly noise, lightly height-biased.** A pure height order
-would show a visitor on day one a pair of feet; mostly-noise scatters
-material across the whole form so the silhouette reads as a Ganpati from
-the first morning, while the height term keeps the crown and ear tips as
-the last things to finish.
+**He forms from the centre out.** The weight is mostly distance from his
+vertical axis, with noise to keep the unfinished passages irregular and a
+light height term: the face, the trunk and the body arrive first, the
+outer hands, the ears and the edges of the base last — the way a murti is
+finished. An earlier, mostly-noise order let chance put the unfinished
+passage on his face, which no visitor should ever meet. Visarjan walks the
+same order backwards, so the extremities let go first and the face last.
 
 **Sampling is area-weighted, not per-vertex.** The asset is densely
 tessellated around the face and ornaments and sparse across the broad
@@ -254,8 +300,17 @@ by tier.
 - the **offerings** get him there sooner, and fuller in the meantime
 
 ```
-formation = max( byDay, 0.35·byDay + 0.75·byOfferings )   // floored at 0.08
+progress  = max( byDay, 0.35·byDay + 0.75·byOfferings )
+formation = 0.70 + 0.30·progress
 ```
+
+**He starts as a murti.** The floor is 0.70, not a trace: at lower values
+the first impression of every early visitor was a particle cloud in his
+shape rather than terracotta. From 0.70 he reads as clay with a few
+unfinished passages still made of loose material, and everything the
+days and the offerings add is built above that. The loose material is
+warm terracotta dust rather than a dark suspension, so an unfinished
+passage reads as clay that has not yet settled — never as a hole in him.
 
 `max` rather than a sum, deliberately: the calendar is a floor the crowd
 can beat, not a quota they have to meet. On any day but the last, what
@@ -408,19 +463,19 @@ than a tendency:
 
 A Ganeshotsav, heard. The audience is Indian, so every sound is one a
 visitor already knows from a pandal or a puja: tanpura and bansuri in the
-hall, the pandal outside at night, marigold petals and akshata on a thali,
-a ghanti, a temple ghanta, dhol and tasha, a coconut broken as an
-offering, a shankh. Nothing is decoration — each sound is tied to
-something the material is doing.
+hall, the pandal outside at night, a distant temple ghanta on arrival,
+marigold petals on a thali, ghungroo, dhol, a coconut broken as an
+offering, a diya being lit, tabla, clay, a shankh. Nothing is decoration —
+each sound is tied to something the material is doing.
 
 ### Seven layers, never all at once
 
 ```
 SPACE           bhakti music (tanpura, bansuri, Raag Hansadhwani) + the pandal at night
-OFFERING        a puja sound for each offering, from its gathering to its contact
+OFFERING        each offering approaches in its own way
 TRANSFORMATION  the moment a thing stops being what it was (the coconut, the bansuri)
-BAPPA           the temple ghanta, heard only when something becomes part of him
-VISARJAN        a dhol-tasha procession that carries him, then recedes as he dissolves
+BAPPA           received: a touch on clay, and the clay body answering — the same for all
+VISARJAN        the sound being taken away as he goes; quieter, never louder
 SILENCE         a state: every bus cut, every source stopped, context released
 ```
 
@@ -465,18 +520,22 @@ so it reads this frame, not the last.
 START → GATHER → TRANSFORM → TRAVEL → CONTACT → ABSORPTION → RESONANCE → room
 ```
 
-| | as the words gather | as they let go / travel | contact |
-| --- | --- | --- | --- |
-| Gratitude | marigold petals on a thali | — (the music steps back) | a small brass ghanti |
-| Wish | ghungroo shimmer | a bansuri phrase rising with the particles | a high temple bell |
-| Vighna | heavy dhol knocks | a low dhol roll that lightens as fragments crack; a coconut broken at the crack | a dhol boom |
-| Promise | a diya being lit | a tabla heartbeat that fades as it stops growing | a short shankh |
+| | as the words gather | as they let go / travel |
+| --- | --- | --- |
+| Gratitude | marigold petals on a thali | — (the music steps back) |
+| Wish | ghungroo shimmer | a bansuri phrase rising with the particles |
+| Vighna | heavy dhol knocks | a low dhol roll that lightens as fragments crack; a coconut broken at the crack |
+| Promise | a diya being lit | a tabla heartbeat that fades as it stops growing |
 
-As grains enter him, **akshata falls on the thali** at exactly the rate
-they arrive. All four resolve into **the same temple ghanta** — one still
-ringing is let go, never stacked, and it rings a little fuller and further
-as he is built. The bhakti music ducks for every offering and returns
-after the ghanta.
+**Bappa received it — the same for all four.** On the frame the first
+grain enters the clay: a tiny fingertip touch on dry clay, and a few
+milliseconds later the clay body answering — a soft palm on a terracotta
+ghatam, warm and low, blooming into the hall and decaying to silence.
+Not a bell, not a whoosh, not an impact: terracotta receiving something.
+As the rest of the offering sinks in, the same tiny touches follow at the
+rate the grains arrive. A resonance still ringing is let go rather than
+stacked, and it is a little fuller as he is built. The bhakti music
+steps back for every offering and returns after the clay has rung out.
 
 ### The assets
 
@@ -522,25 +581,25 @@ visual works with sound off.
 
 ### Visarjan
 
-A procession, and then its absence. Every Visarjan level is a curve over
-dissolve, not time, so the dhol-tasha moves exactly as he does:
+Visarjan gets **quieter** as he goes, never louder. Every level is a curve
+over dissolve, not time, and every one of them only falls:
 
 ```
 stillness        the bhakti music stops; only the pandal, very low
-first release    the dhol-tasha pathak arrives and builds
-breakdown        full procession; clay crumbling away from the murti
-particle Bappa   the procession carries him
-release          gulal thrown as he lets go; the dhol-tasha recedes —
-                 quieter, darker, more distant — as the particles drift off
+first release    material starts to move; a dhol-tasha procession very
+                 far away across the city — it never comes closer
+breakdown        clay coming away from the murti, in the foreground
+particle Bappa   gulal on the air as he lets go of his shape; tiny touches
+                 on clay as particles leave, further and further apart
+release          the procession recedes — quieter, darker, more distant
 nothing          at the last light: every bus and the reverb tail cut in
                  milliseconds, every source stopped. Digital silence.
 ```
 
-Silence holds through the darkness and the first four lines. One shankh,
-far away across the water, sounds as GANPATI BAPPA MORYA appears, and when
-it has rung out the context is suspended. Its timing is read from
-`ui/farewell.ts`, the same schedule that sets each line's fade, so
-retiming a line moves both.
+Silence holds through the darkness and the first words. One shankh,
+impossibly far away, sounds under the chant, and when it has rung out the
+context is suspended. Its timing is read from `ui/farewell.ts`, the same
+schedule that sets each line's fade, so retiming a line moves both.
 
 A visitor who arrives after the ending hears nothing, even if they tap:
 the manager tracks that he is gone before any context exists.

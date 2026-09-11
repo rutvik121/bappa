@@ -21,6 +21,7 @@ const DEFAULT_START = '2026-09-14T06:00:00+05:30';
 export const FESTIVAL_DAYS = 10;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 export const FESTIVAL_START = new Date(
   process.env.NEXT_PUBLIC_BAPPA_START ?? DEFAULT_START
@@ -97,53 +98,73 @@ export interface Countdown {
   over: boolean;
 }
 
-/**
- * Time left to build him, broken down for display.
- *
- * Reads the same shifted clock as everything else, so the development day
- * controls move the countdown and the sculpture together rather than
- * letting them disagree.
- */
+/** Time left to build him. Reads the same shifted clock as everything else. */
 export function getCountdown(now = Date.now() + clockOffset): Countdown {
   const remaining = VISARJAN_TIME.getTime() - now;
   if (remaining <= 0) return { days: 0, hours: 0, minutes: 0, over: true };
 
   return {
     days: Math.floor(remaining / DAY_MS),
-    hours: Math.floor((remaining % DAY_MS) / (60 * 60 * 1000)),
-    minutes: Math.floor((remaining % (60 * 60 * 1000)) / 60000),
+    hours: Math.floor((remaining % DAY_MS) / HOUR_MS),
+    minutes: Math.floor((remaining % HOUR_MS) / 60000),
     over: false,
   };
 }
 
-/**
- * The line under the countdown.
- *
- * It carries the stakes, not the arithmetic: what the number means is
- * that there is a limited amount of time in which anyone can still add
- * to him, and then there is not.
- */
-export function describeDeadline(status: FestivalStatus, countdown: Countdown): string {
-  if (status.phase === 'BEFORE') return 'until bappa arrives';
-  if (status.phase === 'ENDED' || countdown.over) return 'today, we let him go';
-
-  // The last day stops being about counting. Whatever he is by now is
-  // what he will be, and the thing that matters today is that he goes.
-  if (countdown.days === 0) return 'today, we let him go';
-  if (countdown.days === 1) return '1 day left to build him';
-  return `${countdown.days} days left to build him`;
+export interface TimeCopy {
+  /** A short count, set small. Omitted when the words are enough on their own. */
+  count: string | null;
+  /** Where he is in the ten days, in the voice of the piece. */
+  phase: string;
 }
 
 /**
- * The countdown, in the voice of the piece: plain words for most of the
- * window, and only sharpening to hours once it is genuinely close. A
- * running seconds display would turn a farewell into a launch timer.
+ * The time, as part of the ritual rather than as a timer.
+ *
+ * No hours ticking, no minutes, no urgency: a number of days, and a line
+ * that changes as the festival moves -- he is beginning, he is taking
+ * shape, and then, plainly, when we let him go.
  */
+export function describeTime(
+  status: FestivalStatus,
+  countdown: Countdown,
+  now = Date.now() + clockOffset
+): TimeCopy {
+  if (status.phase === 'BEFORE') {
+    const days = Math.max(1, Math.ceil((FESTIVAL_START.getTime() - now) / DAY_MS));
+    return {
+      count: `Bappa arrives in ${days} ${days === 1 ? 'day' : 'days'}`,
+      phase: '10 days. Then Visarjan.',
+    };
+  }
+
+  if (status.phase === 'ENDED' || countdown.over) {
+    return { count: null, phase: 'Today, we let him go.' };
+  }
+
+  const daysLeft = Math.ceil(status.msRemaining / DAY_MS);
+
+  if (daysLeft <= 1) {
+    const hours = Math.max(1, Math.ceil(status.msRemaining / HOUR_MS));
+    return {
+      count: hours === 1 ? 'The last hour' : `${hours} hours remain`,
+      phase: 'Today, we let him go.',
+    };
+  }
+  if (daysLeft === 2) return { count: null, phase: 'Tomorrow, we let him go.' };
+
+  return {
+    count: `${daysLeft} days remain`,
+    phase: status.day <= 1 ? 'He’s only beginning.' : 'He’s taking shape.',
+  };
+}
+
+/** Development readout only. */
 export function describeRemaining(status: FestivalStatus): string {
   if (status.phase === 'BEFORE') return 'bappa arrives soon';
   if (status.phase === 'ENDED') return 'visarjan';
 
-  const hours = status.msRemaining / (60 * 60 * 1000);
+  const hours = status.msRemaining / HOUR_MS;
 
   if (hours <= 1) {
     const mins = Math.max(1, Math.round(status.msRemaining / 60000));

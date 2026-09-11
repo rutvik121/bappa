@@ -108,7 +108,7 @@ export function DustField({ perf }: { perf: PerfProfile }) {
     // Nothing of his outlives him, including the air around him. Set
     // directly from elapsed so reaching zero does not depend on how many
     // frames happened to be drawn.
-    const { state, elapsed } = useScene.getState();
+    const { state, elapsed, mood } = useScene.getState();
 
     // Unrelated motion quiets while a contribution is happening, so the
     // offering is the only thing moving. Stillness is what makes the one
@@ -117,6 +117,12 @@ export function DustField({ perf }: { perf: PerfProfile }) {
     if (state === 'UNDERSTANDING' || state === 'TRANSFORMING') target = 0.25;
     else if (state === 'CONTRIBUTING') target = 0.6;
     else if (state === 'VISARJAN') target = Math.max(0, 1 - elapsed / 32);
+
+    // A wish leaves more light hanging in the air; a vighna, less.
+    if (state !== 'VISARJAN') {
+      if (mood === 'WISH') target *= 1.4;
+      if (mood === 'VIGHNA') target *= 0.45;
+    }
 
     uniforms.uOpacity.value += (target - uniforms.uOpacity.value) * 0.03;
     if (state === 'VISARJAN') uniforms.uOpacity.value = target;

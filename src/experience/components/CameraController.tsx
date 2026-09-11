@@ -1,18 +1,22 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene, type SceneStateName } from '../state/sceneState';
-import { BAPPA_CENTER } from './GanpatiModel';
 
 /**
- * What the camera aims at. Deliberately not BAPPA_CENTER: that is where
- * offerings are drawn to, roughly his heart, and aiming there drops the
- * sculpture low enough to sit on top of the call to action. His visual
- * centre is a little higher.
+ * The camera composes the frame; it does not perform.
+ *
+ * Bappa is the hero, so every shot is built around him with room left
+ * above and below for the few words the piece uses -- the headline sits in
+ * darkness over his crown, the invitation in darkness under his base, and
+ * neither is ever printed across the sculpture.
+ *
+ * Movement follows the rest of the piece: stillness, one event, stillness.
+ * The camera holds while an offering travels -- the offering is the event
+ * -- and only moves between states, slowly.
  */
-const LOOK = new THREE.Vector3(0, 1.14, 0);
 
 interface Shot {
   pos: THREE.Vector3;
@@ -20,37 +24,53 @@ interface Shot {
   fov: number;
   /** Seconds to cover roughly 90% of the move. Higher = slower. */
   ease: number;
+  /**
+   * How much of his full width must stay in frame on a narrow screen.
+   * 1 keeps both outer hands in; lower allows an intimate crop.
+   */
+  fit: number;
 }
 
 /**
- * Every state is a camera position, and the only transition is a critically
- * damped move between them. Nothing cuts, nothing accelerates.
- *
- * Distances are chosen against the frame, not by eye: at a 34 degree fov
- * the visible height at distance d is 0.611*d, so Bappa's 2.3 units fill
- * roughly three quarters of the frame at d = 5. He should be the first
- * thing seen, not something to be found.
+ * Bappa is 2.3 units tall and centred at y = 0.95. At a 34 degree fov the
+ * visible height at distance d is 0.611*d, so from 6.0 he fills a little
+ * under two thirds of a landscape frame -- dominant, with dark bands above
+ * and below. Looking at 1.06 rather than his centre lowers him slightly,
+ * which is where the larger band (the headline) needs the room.
  */
 const SHOTS: Record<SceneStateName, Shot> = {
-  // Wide, but he commands it -- deep black around a large sculpture.
-  IDLE: { pos: new THREE.Vector3(0, 1.18, 5.25), look: LOOK, fov: 34, ease: 6.0 },
-  // Slow push-in. Closer, more intimate framing.
-  CONTRIBUTING: { pos: new THREE.Vector3(0, 1.05, 3.75), look: LOOK, fov: 32, ease: 9.0 },
-  // Held. The pause after submitting is a held breath, so the camera stops.
-  UNDERSTANDING: { pos: new THREE.Vector3(0, 1.05, 3.65), look: LOOK, fov: 32, ease: 11.0 },
-  // Drifts a few degrees around the axis while the offering travels.
-  TRANSFORMING: { pos: new THREE.Vector3(0.85, 1.15, 3.6), look: LOOK, fov: 33, ease: 10.0 },
-  // Pull back: the offering is gone and so is the closeness.
-  COMPLETE: { pos: new THREE.Vector3(0, 1.28, 5.6), look: LOOK, fov: 35, ease: 12.0 },
+  IDLE: { pos: new THREE.Vector3(0, 1.2, 6.0), look: new THREE.Vector3(0, 1.06, 0), fov: 34, ease: 6, fit: 1 },
+  // Closer while choosing and writing, still clear of the words below.
+  CONTRIBUTING: { pos: new THREE.Vector3(0, 1.12, 4.5), look: new THREE.Vector3(0, 1.16, 0), fov: 32, ease: 9, fit: 0.82 },
+  // Held. The breath after offering is a held camera.
+  UNDERSTANDING: { pos: new THREE.Vector3(0, 1.1, 4.3), look: new THREE.Vector3(0, 1.12, 0), fov: 32, ease: 11, fit: 0.82 },
+  // Still held while it travels: a few centimetres of drift, no orbit.
+  TRANSFORMING: { pos: new THREE.Vector3(0.18, 1.12, 4.3), look: new THREE.Vector3(0, 1.1, 0), fov: 32, ease: 14, fit: 0.82 },
+  // Back out, leaving the lower band for the closing line.
+  COMPLETE: { pos: new THREE.Vector3(0, 1.22, 6.1), look: new THREE.Vector3(0, 1.02, 0), fov: 34, ease: 12, fit: 1 },
   // The longest, slowest retreat in the piece.
-  VISARJAN: { pos: new THREE.Vector3(0, 1.4, 7.0), look: LOOK, fov: 38, ease: 26.0 },
+  VISARJAN: { pos: new THREE.Vector3(0, 1.35, 7.0), look: new THREE.Vector3(0, 1.12, 0), fov: 38, ease: 26, fit: 1 },
 };
 
+/** His width with the outer hands, plus a little air. */
+const FULL_WIDTH = 1.95;
+
 export function CameraController() {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const pos = useRef(SHOTS.IDLE.pos.clone());
   const look = useRef(SHOTS.IDLE.look.clone());
-  const lookTarget = useRef(new THREE.Vector3());
+  const target = useRef(new THREE.Vector3());
+  const dir = useRef(new THREE.Vector3());
+  const still = useRef(false);
+
+  // Handheld drift is atmosphere, and atmosphere is optional.
+  useEffect(() => {
+    const q = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => (still.current = q.matches);
+    apply();
+    q.addEventListener('change', apply);
+    return () => q.removeEventListener('change', apply);
+  }, []);
 
   useFrame((_, rawDt) => {
     // Clamp dt so a backgrounded tab does not snap the camera on return.
@@ -62,29 +82,32 @@ export function CameraController() {
     // Exponential smoothing, framerate independent.
     const k = 1 - Math.exp(-dt / (shot.ease * 0.25));
 
-    lookTarget.current.copy(shot.pos);
+    // On a narrow screen the width is what limits the frame, not the
+    // height: pull back until both outer hands are in, rather than
+    // cropping him into orange fragments at the edges of a phone.
+    const aspect = size.width / Math.max(1, size.height);
+    const tanHalf = Math.tan(THREE.MathUtils.degToRad(shot.fov) / 2) * aspect;
+    const needed = (FULL_WIDTH / 2 / tanHalf) * shot.fit;
+    dir.current.copy(shot.pos).sub(shot.look);
+    const distance = Math.max(dir.current.length(), needed);
+    target.current.copy(shot.look).addScaledVector(dir.current.normalize(), distance);
 
-    // Two slow, mutually prime drifts. Handheld weight without handheld noise.
-    const amp = state === 'VISARJAN' ? 0.05 : 0.09;
-    lookTarget.current.x += Math.sin(t * 0.11) * amp;
-    lookTarget.current.y += Math.sin(t * 0.083) * amp * 0.55;
-
-    // A continuing orbit while the contribution is being absorbed, so the
-    // motion reads as ongoing rather than as arriving at a new mark.
-    if (state === 'TRANSFORMING') {
-      const a = elapsed * 0.055;
-      lookTarget.current.x += Math.sin(a) * 0.55;
-      lookTarget.current.z += (Math.cos(a) - 1) * 0.28;
+    // A barely perceptible drift, so the frame is held by a person rather
+    // than bolted down. Never enough to read as movement.
+    if (!still.current) {
+      const amp = state === 'VISARJAN' ? 0.02 : 0.035;
+      target.current.x += Math.sin(t * 0.11) * amp;
+      target.current.y += Math.sin(t * 0.083) * amp * 0.55;
     }
 
     // The Visarjan pull-back keeps easing outward for as long as it runs,
     // so the frame never settles while Bappa is leaving it.
     if (state === 'VISARJAN') {
-      lookTarget.current.z += Math.min(elapsed * 0.075, 3.2);
-      lookTarget.current.y += Math.min(elapsed * 0.012, 0.5);
+      target.current.z += Math.min(elapsed * 0.075, 3.2);
+      target.current.y += Math.min(elapsed * 0.012, 0.5);
     }
 
-    pos.current.lerp(lookTarget.current, k);
+    pos.current.lerp(target.current, k);
     look.current.lerp(shot.look, k);
 
     camera.position.copy(pos.current);

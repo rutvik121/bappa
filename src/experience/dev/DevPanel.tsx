@@ -48,7 +48,7 @@ const SPAN: Record<SceneStateName, number> = {
   CONTRIBUTING: 20,
   UNDERSTANDING: 3.4,
   TRANSFORMING: 16,
-  COMPLETE: 17,
+  COMPLETE: 11,
   // Past the darkness and through the closing words, or the scrub can
   // never reach them -- the slider clamps to its max, and the farewell
   // begins after the dissolve has already finished.

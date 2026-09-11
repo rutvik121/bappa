@@ -8,49 +8,28 @@ import { useCollective } from '../state/collective';
 import {
   getFestivalStatus,
   getCountdown,
-  describeDeadline,
-  FESTIVAL_DAYS,
+  describeTime,
   type Countdown,
 } from '../state/festival';
-import { currentFormation } from '../state/formation';
-import { FAREWELL_LINES } from './farewell';
+import { FAREWELL_LINES, FAREWELL_OUT_MS } from './farewell';
+import { OFFERINGS, OfferingMark, offeringFor } from './offerings';
 
 /**
  * The entire interface.
  *
- * There is no chrome, no navigation and no persistent controls. Each
- * state shows the smallest amount of language that lets the next thing
- * happen, and nothing else. During UNDERSTANDING and TRANSFORMING the
- * interface is completely absent, because those moments are not the
- * visitor's to act on.
+ * ORIENTATION → CHOICE → PERSONAL OFFERING → TRANSFORMATION → ABSORPTION
+ * → EMOTIONAL RESPONSE → STILLNESS.
  *
- * Nothing here makes a sound. Gestures wake the AudioContext -- browsers
- * require that to happen inside one -- and everything after that is the
- * SoundDirector's.
+ * Each step shows the least language that lets the next thing happen.
+ * During the transformation the interface is absent, because that moment
+ * is not the visitor's to operate. Nothing here makes a sound: gestures
+ * wake the AudioContext, and everything after that is the SoundDirector's.
  */
 
-const OFFERINGS: Array<{ id: ContributionType; label: string; prompt: string }> = [
-  {
-    id: 'GRATITUDE',
-    label: 'gratitude',
-    prompt: 'What are you thankful for?',
-  },
-  {
-    id: 'WISH',
-    label: 'a wish',
-    prompt: 'What do you hope for?',
-  },
-  {
-    id: 'VIGHNA',
-    label: 'an obstacle',
-    prompt: 'What is in your way?',
-  },
-  {
-    id: 'PROMISE',
-    label: 'a promise',
-    prompt: 'What will you begin?',
-  },
-];
+type Step = 'choose' | 'write';
+
+/** Which composition the overlay is in; drives the readability scrims. */
+type Scene = 'idle' | Step | 'offering' | 'complete' | 'visarjan';
 
 export function Overlay({ ready }: { ready: boolean }) {
   const state = useScene((s) => s.state);
@@ -58,37 +37,32 @@ export function Overlay({ ready }: { ready: boolean }) {
   const draft = useScene((s) => s.draft);
   const setState = useScene((s) => s.setState);
   const setType = useScene((s) => s.setType);
+  const setMood = useScene((s) => s.setMood);
   const setDraft = useScene((s) => s.setDraft);
 
   const count = useCollective((s) => s.count);
   const collectiveReady = useCollective((s) => s.ready);
   const [festival, setFestival] = useState(() => getFestivalStatus());
-  const [formation, setFormation] = useState(0);
   const [countdown, setCountdown] = useState<Countdown>(() => getCountdown());
+
   /**
-   * The explanation steps back once it has been read.
-   *
-   * A first-time visitor needs the mechanism in the first few seconds;
-   * after that the copy is in the way of the thing it was explaining. It
-   * dims rather than disappears, so it can still be read on return, and
-   * any pointer movement brings it back.
+   * Once read, the supporting lines step back so Bappa is what is left.
+   * They dim rather than disappear, and any movement brings them back.
    */
   const [settled, setSettled] = useState(false);
-  /** Seconds into Visarjan; drives the closing words and nothing else. */
-  const [farewell, setFarewell] = useState(-1);
+
+  const [farewellIn, setFarewellIn] = useState(false);
+  const [farewellOut, setFarewellOut] = useState(false);
   /**
    * Once he starts to leave, the interface goes and does not come back.
-   *
-   * Unmounted rather than left to a CSS fade: the layers hide themselves
-   * with a delayed `visibility` transition, and a transition that stalls
-   * leaves the wordmark sitting over the darkness. From here the piece is
-   * a film, so this has to be a certainty rather than an animation.
+   * Unmounted rather than faded, so it is a certainty and not an animation.
    */
   const [uiGone, setUiGone] = useState(false);
   /** Whether this is the visitor's first read of the festival clock. */
   const firstRead = useRef(true);
 
-  const [chosen, setChosen] = useState(false);
+  const [step, setStep] = useState<Step>('choose');
+  const [picked, setPicked] = useState<ContributionType | null>(null);
   const [sound, setSound] = useState<SoundStatus>('off');
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -99,8 +73,7 @@ export function Overlay({ ready }: { ready: boolean }) {
 
     const room = audio();
     const unsubscribe = room.onStatus(setSound);
-    // Sound wakes on the first meaningful gesture anywhere, not only on
-    // the call to action -- but never before one.
+    // Sound wakes on the first meaningful gesture anywhere, never before.
     const disarm = room.armGesture();
     // Bytes only, and after the sculpture has had the network to itself.
     const fetchLater = window.setTimeout(() => room.prefetch(), 1500);
@@ -114,29 +87,21 @@ export function Overlay({ ready }: { ready: boolean }) {
 
   /**
    * The ten days are the premise, so the ending is not something anyone
-   * triggers -- it arrives. Polled on a slow interval rather than per
-   * frame; the clock does not need frame precision, and this keeps
-   * working in a tab that is getting no frames at all.
+   * triggers -- it arrives. Polled slowly; the clock needs no frame
+   * precision, and this keeps working in a tab that gets no frames.
    */
   useEffect(() => {
     const tick = () => {
       const next = getFestivalStatus();
       setFestival(next);
-      setFormation(currentFormation());
       setCountdown(getCountdown());
 
       const s = useScene.getState().state;
 
       if (next.phase === 'ENDED' && (s === 'IDLE' || s === 'COMPLETE')) {
         if (firstRead.current) {
-          /**
-           * Arriving after it is over.
-           *
-           * Nothing is permanent is the promise the piece makes, so a
-           * visitor who comes late does not get to watch it happen --
-           * that would make the ending a recording. He is already gone,
-           * and all that is here is what was said afterwards.
-           */
+          // Arriving after it is over: he is already gone, and there is no
+          // replay. Only the darkness and the last words.
           useScene.getState().setState('VISARJAN');
           useScene.getState().setElapsed(VISARJAN_DURATION + DARKNESS_HOLD);
         } else {
@@ -154,23 +119,34 @@ export function Overlay({ ready }: { ready: boolean }) {
     return () => clearInterval(id);
   }, []);
 
-  // The closing words arrive after the darkness has been allowed to sit.
+  // The words wait for the darkness to have been empty for a moment.
   useEffect(() => {
     if (state !== 'VISARJAN') {
-      setFarewell(-1);
+      setFarewellIn(false);
       setUiGone(false);
       return undefined;
     }
 
-    // Long enough for the fade to play when the clock is healthy, short
-    // enough that nothing is still on screen once he is going.
     const clear = setTimeout(() => setUiGone(true), 1500);
-    const id = setInterval(() => setFarewell(useScene.getState().elapsed), 400);
+    const id = setInterval(() => {
+      if (useScene.getState().elapsed >= VISARJAN_DURATION + DARKNESS_HOLD) setFarewellIn(true);
+    }, 300);
     return () => {
       clearInterval(id);
       clearTimeout(clear);
     };
   }, [state]);
+
+  // ...and then leave too. A wall-clock timer, because the render loop has
+  // stopped by now and the scene clock no longer advances.
+  useEffect(() => {
+    if (!farewellIn) {
+      setFarewellOut(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setFarewellOut(true), FAREWELL_OUT_MS);
+    return () => clearTimeout(t);
+  }, [farewellIn]);
 
   useEffect(() => {
     if (state !== 'IDLE') {
@@ -178,33 +154,64 @@ export function Overlay({ ready }: { ready: boolean }) {
       return undefined;
     }
 
-    let timer = window.setTimeout(() => setSettled(true), 5500);
+    let timer = window.setTimeout(() => setSettled(true), 6000);
     const wake = () => {
       setSettled(false);
       window.clearTimeout(timer);
-      timer = window.setTimeout(() => setSettled(true), 5500);
+      timer = window.setTimeout(() => setSettled(true), 6000);
     };
 
     window.addEventListener('pointermove', wake, { passive: true });
+    window.addEventListener('keydown', wake);
     return () => {
       window.clearTimeout(timer);
       window.removeEventListener('pointermove', wake);
+      window.removeEventListener('keydown', wake);
     };
   }, [state]);
 
+  // Back at rest: nothing is chosen, nothing half-written survives.
   useEffect(() => {
-    if (state === 'CONTRIBUTING' && chosen) {
-      // A beat before focus, so the keyboard does not race the push-in.
-      const t = setTimeout(() => inputRef.current?.focus(), 420);
-      return () => clearTimeout(t);
+    if (state === 'IDLE') {
+      setStep('choose');
+      setPicked(null);
+      if (useScene.getState().draft) setDraft('');
     }
-    if (state === 'IDLE') setChosen(false);
-    return undefined;
-  }, [state, chosen]);
+  }, [state, setDraft]);
+
+  // A beat before focus, so the keyboard does not race the push-in.
+  useEffect(() => {
+    if (state !== 'CONTRIBUTING' || step !== 'write') return undefined;
+    const t = setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 420);
+    return () => clearTimeout(t);
+  }, [state, step]);
+
+  // Escape steps back one gesture at a time.
+  useEffect(() => {
+    if (state !== 'CONTRIBUTING') return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (step === 'write') setStep('choose');
+      else leave();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
 
   const begin = () => {
     audio().init();
+    setPicked(null);
+    setMood(null);
+    setStep('choose');
     setState('CONTRIBUTING');
+  };
+
+  const leave = () => setState('IDLE');
+
+  const pick = (id: ContributionType) => {
+    setPicked(id);
+    setType(id);
+    setMood(id);
   };
 
   const offer = () => {
@@ -212,183 +219,183 @@ export function Overlay({ ready }: { ready: boolean }) {
     setState('UNDERSTANDING');
   };
 
-  const beginVisarjan = () => {
-    audio().init();
-    setState('VISARJAN');
-  };
+  const active = offeringFor(picked ?? type);
 
-  const active = OFFERINGS.find((o) => o.id === type)!;
-  // On the last day the tally stops being the point: he is one Bappa.
-  const whole = festival.day >= FESTIVAL_DAYS && formation >= 0.999;
+  const scene: Scene =
+    state === 'IDLE'
+      ? 'idle'
+      : state === 'CONTRIBUTING'
+        ? step
+        : state === 'COMPLETE'
+          ? 'complete'
+          : state === 'VISARJAN'
+            ? 'visarjan'
+            : 'offering';
+
+  const time = describeTime(festival, countdown);
 
   return (
-    <div className={`overlay ${ready ? 'is-ready' : ''}`}>
+    <div className={`overlay ${ready ? 'is-ready' : ''}`} data-scene={scene}>
+      {/* Readability without boxes: soft darkness where the words sit, and
+          none while the offering is the only thing in the frame. */}
+      <div className="scrim scrim--top" aria-hidden="true" />
+      <div className="scrim scrim--bottom" aria-hidden="true" />
+
       {!uiGone && (
         <>
-      {/* ---------------- IDLE ---------------- */}
-      {/* The first five seconds have to answer "what is this?". The
-          wordmark alone never did -- it named the thing without saying
-          what it does, so the mechanism is stated plainly underneath and
-          the old tagline drops to a secondary descriptor. */}
-      <div
-        className={`layer layer--masthead ${state === 'IDLE' ? 'in' : ''} ${
-          settled ? 'is-settled' : ''
-        }`}
-      >
-        <h1 className="wordmark">
-          BAPPA <span>2026</span>
-        </h1>
+          {/* ---------------- ORIENTATION ---------------- */}
+          <header
+            className={`layer layer--masthead ${scene === 'idle' ? 'in' : ''} ${
+              settled ? 'is-settled' : ''
+            }`}
+          >
+            <p className="brand">Bappa 2026</p>
+            <h1 className="headline">
+              Leave something
+              <br />
+              with Bappa.
+            </h1>
+            <p className="litany">A wish. A gratitude. A burden. A promise.</p>
+            <p className="support">He becomes what we leave behind.</p>
+          </header>
 
-        <p className="lede-primary">
-          A Ganpati built by everyone
-          <br />
-          on the Internet.
-        </p>
+          <div
+            className={`layer layer--foot ${scene === 'idle' ? 'in' : ''} ${
+              settled ? 'is-settled' : ''
+            }`}
+          >
+            <p className="time">
+              {time.count && <span className="time-count">{time.count}</span>}
+              <span className="time-phase">{time.phase}</span>
+            </p>
 
-        <p className="lede-secondary">
-          Leave a wish, gratitude, an obstacle or a promise.
-          <br />
-          It becomes part of him.
-        </p>
-      </div>
+            <button className="rite" onClick={begin}>
+              Make an offering
+            </button>
 
-      <div
-        className={`layer layer--foot ${state === 'IDLE' ? 'in' : ''} ${
-          settled ? 'is-settled' : ''
-        }`}
-      >
-        <button className="quiet" onClick={begin}>
-          Leave something with Bappa
-        </button>
-
-        {collectiveReady && (
-          <p className="collective">
-            {whole
-              ? `${FESTIVAL_DAYS} days. One Bappa.`
-              : count === 0
-                ? 'Be the first to leave something.'
-                : `${count.toLocaleString()} ${
-                    count === 1 ? 'offering has' : 'offerings have'
-                  } become part of him.`}
-          </p>
-        )}
-
-        <button className="whisper" onClick={beginVisarjan}>
-          visarjan
-        </button>
-      </div>
-
-      {/* The countdown. Set in the corner and kept quiet: it carries the
-          stakes -- there is a limited time in which anyone can still add
-          to him -- without ever reading as a promotional timer. */}
-      <div
-        className={`layer layer--countdown ${state === 'IDLE' ? 'in' : ''} ${
-          settled ? 'is-settled' : ''
-        }`}
-      >
-        {festival.phase !== 'ENDED' && !countdown.over && (
-          <div className="clock">
-            <span>
-              <em>{String(countdown.days).padStart(2, '0')}</em> days
-            </span>
-            <span>
-              <em>{String(countdown.hours).padStart(2, '0')}</em> hours
-            </span>
-            <span>
-              <em>{String(countdown.minutes).padStart(2, '0')}</em> minutes
-            </span>
+            {collectiveReady && count > 0 && (
+              <p className="tally">
+                {count.toLocaleString('en-IN')}{' '}
+                {count === 1 ? 'offering has' : 'offerings have'} become part of Bappa.
+              </p>
+            )}
           </div>
-        )}
-        <p className="clock-label">{describeDeadline(festival, countdown)}</p>
-      </div>
 
-      {/* ------------- CONTRIBUTING ------------- */}
-      <div className={`layer layer--compose ${state === 'CONTRIBUTING' ? 'in' : ''}`}>
-        {!chosen ? (
-          <div className="choices">
-            <p className="lede">What are you bringing?</p>
-            <div className="choice-row">
+          {/* ---------------- CHOICE ---------------- */}
+          <section
+            className={`layer layer--choose ${scene === 'choose' ? 'in' : ''}`}
+            aria-label="Choose an offering"
+          >
+            <h2 className="ask">What will you leave with him?</h2>
+
+            <div className={`invites ${picked ? 'has-choice' : ''}`} role="group">
               {OFFERINGS.map((o) => (
                 <button
                   key={o.id}
-                  className={`choice ${type === o.id ? 'is-active' : ''}`}
-                  onClick={() => {
-                    setType(o.id);
-                    setChosen(true);
-                  }}
+                  className={`invite invite--${o.id.toLowerCase()}`}
+                  aria-pressed={picked === o.id}
+                  onClick={() => pick(o.id)}
                 >
-                  {o.label}
+                  <span className="invite-top">
+                    <OfferingMark id={o.id} />
+                    <span className="invite-name">{o.name}</span>
+                  </span>
+                  <span className="invite-line">{o.line}</span>
                 </button>
               ))}
             </div>
-          </div>
-        ) : (
-          <div className="compose">
-            <p className="lede">{active.prompt}</p>
+
+            <div className="choose-foot">
+              <button className="aside" onClick={leave}>
+                Not now
+              </button>
+              <button
+                className={`rite ${picked ? '' : 'is-waiting'}`}
+                onClick={() => picked && setStep('write')}
+                tabIndex={picked ? 0 : -1}
+                aria-hidden={!picked}
+              >
+                {picked ? offeringFor(picked).choose : 'Choose one'}
+              </button>
+            </div>
+          </section>
+
+          {/* ---------------- PERSONAL OFFERING ---------------- */}
+          <section
+            className={`layer layer--write layer--${active.id.toLowerCase()} ${
+              scene === 'write' ? 'in' : ''
+            }`}
+          >
+            <button className="aside aside--back" onClick={() => setStep('choose')}>
+              <span aria-hidden="true">←</span> {active.name}
+            </button>
+
+            <label className="prompt" htmlFor="offering-text">
+              {active.prompt}
+            </label>
+
             <textarea
+              id="offering-text"
               ref={inputRef}
               className="input"
               value={draft}
+              placeholder={active.placeholder}
               maxLength={400}
               rows={3}
               spellCheck={false}
+              autoComplete="off"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) offer();
               }}
             />
-            <div className="compose-foot">
+
+            <div className="write-foot">
               <span className="note">Only you will ever read this.</span>
-              <button className="quiet" onClick={offer} disabled={!draft.trim()}>
-                Offer
+              <button className="rite" onClick={offer} disabled={!draft.trim()}>
+                {active.offer}
               </button>
             </div>
-          </div>
-        )}
-      </div>
+          </section>
 
-      {/* UNDERSTANDING and TRANSFORMING render nothing at all. */}
-
-          {/* ---------------- COMPLETE ---------------- */}
-          <div className={`layer layer--closing ${state === 'COMPLETE' ? 'in' : ''}`}>
-            <p className="closing closing--first">You left something with Bappa.</p>
-            <p className="closing closing--second">
-              It&rsquo;s no longer yours to carry alone.
-            </p>
+          {/* ---------------- EMOTIONAL RESPONSE ---------------- */}
+          <div className={`layer layer--closing ${scene === 'complete' ? 'in' : ''}`} aria-live="polite">
+            {scene === 'complete' && (
+              <p className="closing-line" key={type}>
+                {offeringFor(type).closing}
+              </p>
+            )}
           </div>
         </>
       )}
 
       {/* ---------------- VISARJAN ---------------- */}
-      {/* Nothing is shown while he is going. The words wait for the dark
-          to have been empty for a moment first -- the silence is doing
-          most of the work, and language arriving early would spend it.
-          Each line's delay comes from the same schedule the bell reads. */}
+      {/* Nothing is shown while he is going. The words wait for the dark to
+          have been silent for a moment, stay briefly, and go. */}
       <div
-        className={`layer layer--farewell ${
-          farewell >= VISARJAN_DURATION + DARKNESS_HOLD ? 'in' : ''
-        }`}
+        className={`layer layer--farewell ${farewellIn ? 'in' : ''} ${farewellOut ? 'out' : ''}`}
+        aria-live="polite"
       >
-        {FAREWELL_LINES.map((line, i) => (
+        {FAREWELL_LINES.map((line) => (
           <p
-            key={line.text}
-            className={`farewell farewell--${i + 1}`}
-            style={{ transitionDelay: `${line.at}ms` }}
+            key={line.kind}
+            className={`farewell-line farewell-line--${line.kind}`}
+            style={{ transitionDelay: farewellOut ? '0ms' : `${line.at}ms` }}
           >
-            {line.text}
+            {line.lines.map((l) => (
+              <span key={l}>{l}</span>
+            ))}
           </p>
         ))}
       </div>
 
-      {/* Sound is the only persistent control, and it is nearly invisible.
-          It goes too once he starts to leave: from that point on this is
-          a film, and there is nothing left to operate. */}
+      {/* The only persistent control. It goes when he starts to leave. */}
       <button
         className={`sound ${state === 'VISARJAN' ? 'gone' : ''} ${sound === 'on' ? 'is-on' : ''}`}
         onClick={() => audio().toggle()}
         aria-pressed={sound === 'on'}
       >
-        {sound === 'on' ? 'sound off' : 'sound on'}
+        {sound === 'on' ? 'Sound off' : 'Sound on'}
       </button>
     </div>
   );

@@ -23,6 +23,13 @@ export interface SceneStore {
   /** Selected offering kind, chosen before the user writes anything. */
   type: ContributionType;
   /**
+   * The offering the visitor has chosen, while they are choosing and while
+   * it happens -- null otherwise. The room answers it very slightly: warmer
+   * for gratitude, lighter for a wish, heavier for a vighna, more alive for
+   * a promise.
+   */
+  mood: ContributionType | null;
+  /**
    * The raw text NEVER leaves this store, is never rendered back to the
    * screen after submission, and is never persisted or transmitted.
    * It exists only long enough to derive a particle seed from it.
@@ -34,6 +41,7 @@ export interface SceneStore {
   /** Scrubs the current state's clock. Development only. */
   setElapsed: (seconds: number) => void;
   setType: (t: ContributionType) => void;
+  setMood: (m: ContributionType | null) => void;
   setDraft: (s: string) => void;
   /** Consumes the draft: returns a seed, then wipes the text. */
   consumeDraft: () => { seed: number; weight: number };
@@ -58,12 +66,16 @@ export const useScene = create<SceneStore>((set, get) => ({
   state: 'IDLE',
   elapsed: 0,
   type: 'GRATITUDE',
+  mood: null,
   draft: '',
 
-  setState: (next) => set({ state: next, elapsed: 0 }),
+  // Back at rest, the room lets go of whatever was chosen.
+  setState: (next) =>
+    set(next === 'IDLE' ? { state: next, elapsed: 0, mood: null } : { state: next, elapsed: 0 }),
   tick: (dt) => set((s) => ({ elapsed: s.elapsed + dt })),
   setElapsed: (elapsed) => set({ elapsed }),
   setType: (t) => set({ type: t }),
+  setMood: (m) => set({ mood: m }),
   setDraft: (s) => set({ draft: s }),
 
   consumeDraft: () => {
@@ -75,7 +87,7 @@ export const useScene = create<SceneStore>((set, get) => ({
     return { seed, weight };
   },
 
-  reset: () => set({ state: 'IDLE', elapsed: 0, draft: '' }),
+  reset: () => set({ state: 'IDLE', elapsed: 0, draft: '', mood: null }),
 }));
 
 /** Non-reactive read for use inside the render loop (avoids re-renders). */

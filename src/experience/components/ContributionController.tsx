@@ -16,7 +16,7 @@ import type { PerfProfile } from '../systems/perf';
  *
  * This is the only component that owns state transitions on a timer; the
  * UI owns the two transitions a person makes deliberately (beginning, and
- * submitting). Everything after submission happens to them, not by them.
+ * offering). Everything after that happens to them, not by them.
  *
  * It makes no sound and announces nothing: the SoundDirector watches the
  * simulation this sets in motion and reports what actually happens.
@@ -29,23 +29,39 @@ export const DURATION = {
    * the thing that was just written, and then come apart.
    */
   UNDERSTANDING: 5.4,
-  /** Long enough for the slowest offering type to reach Bappa. */
+  /**
+   * The longest an offering may take to reach him. Normally it is over
+   * much sooner: the state ends when the material has actually been taken
+   * in, plus a breath of stillness.
+   */
   TRANSFORMING: 16,
-  /** The two closing lines, then the room returns to rest. */
-  COMPLETE: 17,
+  /** The closing line arrives, holds, and leaves; then the room is at rest. */
+  COMPLETE: 11,
 } as const;
 
 /** How long the particles hold the shape of the text before letting go. */
 export const FORM_HOLD = 2.1;
 
 /**
- * Nothing happens for this long after submitting.
+ * Nothing happens for this long after offering.
  *
- * The offering is a ritual, and a ritual has a breath before it. Spawning
- * on the same frame as the click made the whole thing read as a UI
- * response; this pause is what turns it into something that was received.
+ * A ritual has a breath before it. Spawning on the same frame as the click
+ * made the whole thing read as a UI response.
  */
 export const STILLNESS_BEFORE = 1.2;
+
+/**
+ * And a breath after. Contact, the clay lighting, the resonance -- then a
+ * moment of nothing before any words, so what just happened is felt before
+ * anything is read.
+ */
+export const STILLNESS_AFTER = 2.2;
+
+/**
+ * The offering counts as taken in once almost nothing of it is still
+ * travelling or sinking into the clay.
+ */
+export const TAKEN_IN_SHARE = 0.04;
 
 /** Used only if there is nothing legible to sample. */
 const FALLBACK_ORIGIN = new THREE.Vector3(0, 0.55, 1.35);
@@ -73,7 +89,6 @@ export function glyphsToWorld(
   // Derived depth put the words almost on top of him -- no room to
   // travel -- and pushed the grains so far from the camera that point
   // attenuation collapsed them to the 1px floor, which is illegible.
-  // Clamped so the text is always comfortably in front of the sculpture.
   const depth = Math.min(2.3, camera.position.distanceTo(BAPPA_CENTER) - 1.2);
   const v = new THREE.Vector3();
 
@@ -100,6 +115,8 @@ interface Props {
 export function ContributionController({ perf, particles }: Props) {
   const { camera, size } = useThree();
   const emitted = useRef(false);
+  const peak = useRef(0);
+  const takenInAt = useRef(-1);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 1 / 20);
@@ -176,13 +193,33 @@ export function ContributionController({ perf, particles }: Props) {
           // Anything still holding the shape lets go now, so the state
           // change and the visual release are the same moment.
           particles.current.system?.releaseFormation();
+          peak.current = 0;
+          takenInAt.current = -1;
           setState('TRANSFORMING');
         }
         break;
       }
 
       case 'TRANSFORMING': {
-        if (elapsed >= DURATION.TRANSFORMING) {
+        // Finished when he has actually taken it in -- not when a timer
+        // guesses he might have. Waiting on a fixed duration left ten
+        // seconds of nothing between the last grain and the closing line.
+        const tel = particles.current.system?.telemetry;
+        if (tel) {
+          const live = tel.journey + tel.settling;
+          peak.current = Math.max(peak.current, live);
+          if (
+            takenInAt.current < 0 &&
+            elapsed > 1.5 &&
+            peak.current > 0 &&
+            live <= peak.current * TAKEN_IN_SHARE
+          ) {
+            takenInAt.current = elapsed;
+          }
+        }
+
+        const takenIn = takenInAt.current >= 0 && elapsed >= takenInAt.current + STILLNESS_AFTER;
+        if (takenIn || elapsed >= DURATION.TRANSFORMING) {
           emitted.current = false;
           setState('COMPLETE');
         }

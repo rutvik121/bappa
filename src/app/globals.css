@@ -1,18 +1,41 @@
 /*
-  There is no design system here on purpose. The 3D scene is the product;
-  this file exists to make type nearly disappear and to keep the browser
-  from contributing anything of its own.
+  BAPPA 2026 -- the interface.
+
+  The 3D scene is the work; this file exists so the few words the piece
+  uses are always readable and never compete with him. Mobile first: the
+  base styles are the phone, and wider screens only relax them.
+
+  Hierarchy, everywhere:
+    brand / label     small sans, letterspaced, quiet
+    main message      large serif
+    supporting line   medium serif or sans, reduced contrast
+    action            clear, bordered, tactile
 */
 
 :root {
-  --ink: rgba(255, 232, 208, 0.86);
-  --ink-dim: rgba(255, 226, 196, 0.34);
-  --ink-faint: rgba(255, 224, 194, 0.18);
-  --ember: #ff9a4d;
-  /* Every transition in the piece uses this curve and this kind of
-     duration. Nothing is allowed to feel responsive. */
+  --ground: #050403;
+
+  /* Three levels of ink on near-black. The quietest still clears WCAG AA
+     against the ground; everything over the scene also gets a soft
+     shadow and a scrim, so none of it can disappear into lit clay. */
+  --ink-1: rgba(255, 241, 226, 0.96);
+  --ink-2: rgba(255, 236, 216, 0.76);
+  --ink-3: rgba(255, 232, 210, 0.58);
+
+  --line: rgba(255, 228, 200, 0.2);
+  --line-2: rgba(255, 228, 200, 0.44);
+
+  --serif: var(--font-serif), 'Cormorant Garamond', 'Iowan Old Style', Georgia, serif;
+  --sans: var(--font-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --lift: 0 0 22px rgba(5, 4, 3, 0.92), 0 0 3px rgba(5, 4, 3, 0.85);
+
   --slow: 1600ms cubic-bezier(0.22, 0.61, 0.24, 1);
   --slower: 2600ms cubic-bezier(0.22, 0.61, 0.24, 1);
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gutter: 20px;
 }
 
 * {
@@ -24,10 +47,12 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #050403;
-  color: var(--ink);
-  font-family: ui-sans-serif, -apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif;
+  background: var(--ground);
+  color: var(--ink-1);
+  font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -42,10 +67,9 @@ body {
 .stage {
   position: fixed;
   inset: 0;
-  /* dvh so mobile URL bars do not letterbox the scene. */
   width: 100vw;
   height: 100dvh;
-  background: #050403;
+  background: var(--ground);
 }
 
 canvas {
@@ -53,19 +77,26 @@ canvas {
   outline: none;
 }
 
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Visible, restrained, and only for keyboards. */
+:focus-visible {
+  outline: 1px solid rgba(255, 236, 216, 0.8);
+  outline-offset: 4px;
+}
+
 /* ---------------------------------------------------------------- */
 /* Overlay                                                           */
 /* ---------------------------------------------------------------- */
 
-/* The container itself does not fade -- every layer stages its own
-   entrance. A second, nested fade here only competed with those, and its
-   transition sat stalled behind the render loop. `is-ready` exists purely
-   to gate the first paint so no text appears before the scene behind it. */
 .overlay {
   position: fixed;
   inset: 0;
   pointer-events: none;
   visibility: hidden;
+  text-shadow: var(--lift);
 }
 
 .overlay.is-ready {
@@ -76,7 +107,7 @@ canvas {
   position: absolute;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(10px);
+  transform: translateY(6px);
   transition:
     opacity var(--slow),
     transform var(--slow),
@@ -94,346 +125,584 @@ canvas {
     visibility 0s;
 }
 
-/* --- masthead --- */
+/* --- scrims --- */
 
-.layer--masthead {
-  top: clamp(28px, 6vh, 64px);
+/* Darkness where the words sit, and nowhere else. Gradients rather than
+   panels, so the frame stays one continuous black room. */
+.scrim {
+  position: absolute;
   left: 0;
   right: 0;
-  text-align: center;
+  opacity: 0;
+  transition: opacity var(--slower);
 }
 
-.wordmark {
-  margin: 0;
-  font-size: clamp(11px, 1.15vw, 14px);
-  font-weight: 500;
-  letter-spacing: 0.42em;
-  text-indent: 0.42em;
-  color: var(--ink-dim);
+.scrim--top {
+  top: 0;
+  height: 42%;
+  background: linear-gradient(
+    to bottom,
+    rgba(5, 4, 3, 0.86) 0%,
+    rgba(5, 4, 3, 0.62) 38%,
+    rgba(5, 4, 3, 0) 100%
+  );
 }
 
-.wordmark span {
-  color: var(--ink-faint);
+.scrim--bottom {
+  bottom: 0;
+  height: 50%;
+  background: linear-gradient(
+    to top,
+    rgba(5, 4, 3, 0.92) 0%,
+    rgba(5, 4, 3, 0.7) 36%,
+    rgba(5, 4, 3, 0) 100%
+  );
 }
 
-/* The primary statement. This is the line that has to answer "what is
-   this?" -- so it is the only piece of copy allowed real presence, and
-   it is set in sentence case rather than the letterspaced caps used for
-   the brand, so it reads as a sentence and not as a label. */
-.lede-primary {
-  margin: 18px 0 0;
-  font-size: clamp(15px, 2.1vw, 21px);
-  font-weight: 300;
-  letter-spacing: 0.015em;
-  line-height: 1.55;
-  color: var(--ink);
+.overlay[data-scene='idle'] .scrim--top,
+.overlay[data-scene='idle'] .scrim--bottom,
+.overlay[data-scene='choose'] .scrim--bottom,
+.overlay[data-scene='write'] .scrim--top,
+.overlay[data-scene='complete'] .scrim--bottom {
+  opacity: 1;
 }
 
-.lede-secondary {
-  margin: 14px 0 0;
-  font-size: clamp(11px, 1.25vw, 13px);
-  font-weight: 300;
-  letter-spacing: 0.05em;
-  line-height: 1.75;
-  color: var(--ink-dim);
-}
-
-/* Once it has been read it steps back, so Bappa is what is left. It
-   dims rather than disappears -- a returning eye can still read it, and
-   any pointer movement brings it straight back. */
-.layer--masthead.is-settled .lede-primary {
-  color: var(--ink-dim);
-}
-
-.layer--masthead.is-settled .lede-secondary,
-.layer--countdown.is-settled,
-.layer--foot.is-settled .collective {
+.overlay[data-scene='choose'] .scrim--top {
   opacity: 0.35;
 }
 
-.layer--masthead .lede-primary,
-.layer--masthead .lede-secondary,
-.layer--countdown,
-.layer--foot .collective {
-  transition:
-    opacity var(--slower),
-    color var(--slower);
+/* Writing sits high on a phone: the darkness has to reach past the note
+   and the action, or they land on lit clay. */
+.overlay[data-scene='write'] .scrim--top {
+  height: 60%;
 }
 
-/* How many people are already in it. */
-.collective {
+/* --- shared type --- */
+
+.brand {
   margin: 0;
-  font-size: clamp(10px, 1.1vw, 12px);
-  letter-spacing: 0.1em;
-  color: var(--ink-faint);
-}
-
-/* --- countdown --- */
-
-/* Cornered and quiet. It carries the stakes without ever reading as a
-   promotional timer: no boxes, no colons, no seconds ticking. */
-.layer--countdown {
-  left: clamp(18px, 3vw, 40px);
-  bottom: clamp(18px, 3.5vh, 42px);
-  text-align: left;
-}
-
-.clock {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.clock span {
-  font-size: 10px;
-  letter-spacing: 0.26em;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.38em;
+  text-indent: 0.38em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-3);
 }
 
-.clock em {
-  font-style: normal;
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  color: var(--ink-dim);
-  /* Tabular figures, or the column jitters every time a digit changes. */
-  font-variant-numeric: tabular-nums;
-}
+/* --- actions --- */
 
-.clock-label {
-  margin: 10px 0 0;
-  font-size: 9px;
-  letter-spacing: 0.24em;
+/* The action. A bordered, square, letterspaced rite -- not a pill, not a
+   gradient. It darkens the scene behind it a little so it is always
+   legible, and answers a press with a small physical give. */
+.rite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  padding: 0 28px;
+  background: rgba(8, 6, 4, 0.5);
+  border: 1px solid var(--line-2);
+  border-radius: 1px;
+  color: var(--ink-1);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
   text-transform: uppercase;
-  color: rgba(255, 224, 194, 0.22);
+  text-shadow: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition:
+    border-color 500ms ease,
+    background-color 500ms ease,
+    color 500ms ease,
+    opacity 700ms ease,
+    transform 160ms ease;
 }
 
-/* The tally and the countdown. Dimmer than the subtitle on purpose:
-   present for anyone who looks, invisible to anyone who does not. */
-.status {
-  margin: 22px 0 0;
-  font-size: 10px;
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  color: rgba(255, 224, 194, 0.13);
-  transition: color var(--slower);
+.rite:hover {
+  border-color: rgba(255, 232, 210, 0.72);
+  background: rgba(255, 228, 200, 0.06);
 }
 
-.status-sep {
-  margin: 0 0.9em;
+.rite:active {
+  transform: translateY(1px);
+  background: rgba(255, 228, 200, 0.1);
 }
 
-.layer--masthead:hover .status {
-  color: var(--ink-dim);
+.rite:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
-/* --- footer actions --- */
+.rite:disabled:hover {
+  border-color: var(--line-2);
+  background: rgba(8, 6, 4, 0.5);
+}
 
-.layer--foot {
-  /* Tight to the floor of the frame on purpose: Bappa fills three
-     quarters of the viewport, and anything higher sits on the sculpture. */
-  bottom: clamp(14px, 3vh, 38px);
+.rite.is-waiting {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A secondary way out. Words only, but still a comfortable target. */
+.aside {
+  min-height: 44px;
+  padding: 0 6px;
+  background: none;
+  border: 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color 400ms ease;
+}
+
+.aside:hover {
+  color: var(--ink-1);
+}
+
+/* ---------------------------------------------------------------- */
+/* ORIENTATION                                                       */
+/* ---------------------------------------------------------------- */
+
+.layer--masthead {
+  top: calc(var(--safe-top) + clamp(22px, 5vh, 56px));
   left: 0;
   right: 0;
+  padding: 0 var(--gutter);
+  text-align: center;
+}
+
+.headline {
+  margin: 14px 0 0;
+  font-family: var(--serif);
+  font-size: clamp(34px, 9.4vw, 54px);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.005em;
+  color: var(--ink-1);
+}
+
+.litany {
+  margin: 12px 0 0;
+  font-family: var(--serif);
+  font-size: clamp(18px, 4.8vw, 22px);
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-2);
+}
+
+.support {
+  margin: 8px 0 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.layer--foot {
+  bottom: calc(var(--safe-bottom) + clamp(18px, 4vh, 44px));
+  left: 0;
+  right: 0;
+  padding: 0 var(--gutter);
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+/* The time, as part of the ritual: a small count and one line. */
+.time {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.time-count {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.time-phase {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.tally {
+  margin: -2px 0 0;
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+}
+
+/* Once read, the supporting lines step back. Never below readable. */
+.layer--masthead .litany,
+.layer--masthead .support,
+.layer--foot .time,
+.layer--foot .tally {
+  transition: opacity var(--slower);
+}
+
+.is-settled .support,
+.is-settled .litany,
+.is-settled .time,
+.is-settled .tally {
+  opacity: 0.62;
+}
+
+/* ---------------------------------------------------------------- */
+/* CHOICE                                                            */
+/* ---------------------------------------------------------------- */
+
+.layer--choose {
+  left: 0;
+  right: 0;
+  bottom: calc(var(--safe-bottom) + clamp(14px, 3vh, 40px));
+  padding: 0 var(--gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ask {
+  margin: 0 0 16px;
+  font-family: var(--serif);
+  font-size: clamp(26px, 7vw, 34px);
+  font-weight: 500;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--ink-1);
+}
+
+.invites {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(100%, 460px);
+}
+
+/* Four invitations. Each carries its own accent, used only in its mark
+   and in the state of having been chosen -- never as a fill. */
+.invite {
+  --accent: 255, 228, 200;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 96px;
+  padding: 14px 14px 15px;
+  text-align: left;
+  background: rgba(8, 6, 4, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 1px;
+  color: var(--ink-2);
+  font: inherit;
+  text-shadow: none;
+  cursor: pointer;
+  transition:
+    border-color 600ms ease,
+    background-color 600ms ease,
+    opacity 700ms ease,
+    transform 160ms ease;
+}
+
+.invite--gratitude { --accent: 232, 170, 108; }
+.invite--wish { --accent: 240, 218, 170; }
+.invite--vighna { --accent: 186, 156, 138; }
+.invite--promise { --accent: 184, 196, 146; }
+
+.invite-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.invite-mark {
+  flex: none;
+  color: rgb(var(--accent));
+  opacity: 0.75;
+  transition: opacity 600ms ease;
+}
+
+.invite-name {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-1);
+}
+
+.invite-line {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink-2);
+}
+
+.invite:hover {
+  border-color: var(--line-2);
+  background: rgba(255, 228, 200, 0.04);
+}
+
+.invite:active {
+  transform: translateY(1px);
+}
+
+/* Chosen: the accent comes up in the edge and a breath of it in the
+   ground, and the other three step back. */
+.invite[aria-pressed='true'] {
+  border-color: rgba(var(--accent), 0.8);
+  background: rgba(var(--accent), 0.09);
+}
+
+.invite[aria-pressed='true'] .invite-mark {
+  opacity: 1;
+}
+
+.invite[aria-pressed='true'] .invite-line {
+  color: var(--ink-1);
+}
+
+.invites.has-choice .invite[aria-pressed='false'] {
+  opacity: 0.5;
+}
+
+.invites.has-choice .invite[aria-pressed='false']:hover {
+  opacity: 0.85;
+}
+
+.choose-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
+  width: min(100%, 460px);
+  margin-top: 14px;
 }
 
-/* --- compose --- */
+/* ---------------------------------------------------------------- */
+/* PERSONAL OFFERING                                                 */
+/* ---------------------------------------------------------------- */
 
-.layer--compose {
+/* On a phone the writing sits high, where the keyboard cannot cover it. */
+.layer--write {
   left: 50%;
-  bottom: clamp(52px, 12vh, 118px);
-  transform: translate(-50%, 10px);
-  width: min(520px, calc(100vw - 48px));
+  top: calc(var(--safe-top) + clamp(18px, 7vh, 64px));
+  width: min(560px, calc(100vw - var(--gutter) * 2));
+  transform: translate(-50%, 6px);
 }
 
-/* On the way out, the written text hands off to the particles that have
-   taken its shape. It leaves faster than the standard layer fade and does
-   not drift, so the words appear to be consumed in place rather than
-   sliding away while their copy assembles underneath. */
-.layer--compose:not(.in) {
+.layer--write.in {
+  transform: translate(-50%, 0);
+}
+
+/* On the way out, the written words hand off to the particles that have
+   taken their shape: they leave faster and do not drift, so they appear
+   consumed in place rather than sliding away. */
+.layer--write:not(.in) {
   transform: translate(-50%, 0);
   transition:
     opacity 900ms ease-out,
     visibility 0s linear 900ms;
 }
 
-.layer--compose.in {
-  transform: translate(-50%, 0);
+.aside--back {
+  margin: 0 0 6px -6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
 }
 
-.lede {
-  margin: 0 0 20px;
-  text-align: center;
-  font-size: clamp(13px, 1.5vw, 15px);
-  font-weight: 400;
-  letter-spacing: 0.04em;
-  color: var(--ink-dim);
-}
-
-.choice-row {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: clamp(14px, 3vw, 30px);
-}
-
-.choice {
-  background: none;
-  border: 0;
-  padding: 8px 2px;
-  font: inherit;
-  font-size: clamp(13px, 1.6vw, 16px);
-  letter-spacing: 0.05em;
-  color: var(--ink-faint);
-  cursor: pointer;
-  transition: color var(--slow);
-}
-
-.choice:hover,
-.choice:focus-visible,
-.choice.is-active {
-  color: var(--ink);
-  outline: none;
+.prompt {
+  display: block;
+  font-family: var(--serif);
+  font-size: clamp(28px, 7.4vw, 38px);
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--ink-1);
 }
 
 .input {
   display: block;
   width: 100%;
+  margin-top: 16px;
+  padding: 10px 0 12px;
   background: transparent;
   border: 0;
-  /* The only line in the interface: it reads as a place to write, not
-     as a form field. */
-  border-bottom: 1px solid rgba(255, 154, 77, 0.13);
-  padding: 12px 2px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
   resize: none;
-  font: inherit;
-  font-size: clamp(15px, 1.9vw, 18px);
-  line-height: 1.65;
-  color: var(--ink);
-  caret-color: var(--ember);
+  font-family: var(--serif);
+  /* 20px: calm to read, and above the 16px at which iOS zooms on focus. */
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ink-1);
+  caret-color: #e59b5e;
+  text-shadow: var(--lift);
   transition: border-color var(--slow);
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+  font-style: italic;
+  opacity: 1;
 }
 
 .input:focus {
   outline: none;
-  border-bottom-color: rgba(255, 154, 77, 0.32);
+  border-bottom-color: var(--line-2);
 }
 
-.compose-foot {
+.input:focus-visible {
+  outline: none;
+}
+
+.write-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  margin-top: 18px;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-top: 16px;
 }
 
 .note {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
 }
 
-/* --- buttons --- */
-
-.quiet {
-  background: none;
-  border: 0;
-  padding: 10px 4px;
-  font: inherit;
-  font-size: clamp(13px, 1.5vw, 15px);
-  letter-spacing: 0.09em;
-  color: var(--ink-dim);
-  cursor: pointer;
-  transition:
-    color var(--slow),
-    opacity var(--slow);
-}
-
-.quiet:hover,
-.quiet:focus-visible {
-  color: var(--ink);
-  outline: none;
-}
-
-.quiet:disabled {
-  opacity: 0.28;
-  cursor: default;
-}
-
-.whisper {
-  background: none;
-  border: 0;
-  padding: 6px;
-  font: inherit;
-  font-size: 10px;
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
-  color: rgba(255, 224, 194, 0.1);
-  cursor: pointer;
-  transition: color var(--slower);
-}
-
-.whisper:hover,
-.whisper:focus-visible {
-  color: var(--ink-dim);
-  outline: none;
-}
-
-/* --- closing lines --- */
+/* ---------------------------------------------------------------- */
+/* EMOTIONAL RESPONSE                                                */
+/* ---------------------------------------------------------------- */
 
 .layer--closing {
   left: 0;
   right: 0;
-  bottom: clamp(70px, 16vh, 150px);
+  bottom: calc(var(--safe-bottom) + clamp(56px, 13vh, 130px));
+  padding: 0 var(--gutter);
   text-align: center;
 }
 
-.closing {
+/* Arrives after a breath, holds, and leaves: one line, no movement to
+   speak of. The COMPLETE state is eleven seconds long; this fits inside. */
+.closing-line {
   margin: 0;
-  font-size: clamp(15px, 2vw, 19px);
-  font-weight: 300;
-  letter-spacing: 0.045em;
-  line-height: 1.9;
-  color: var(--ink-dim);
+  font-family: var(--serif);
+  font-size: clamp(30px, 8vw, 44px);
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--ink-1);
   opacity: 0;
-  transition: opacity 2400ms ease;
+  animation: closing-line 10.4s cubic-bezier(0.22, 0.61, 0.24, 1) both;
 }
 
-/* The second line lands well after the first has been read, so the
-   thought completes in time rather than all at once. */
-.layer--closing.in .closing--first {
+@keyframes closing-line {
+  0% { opacity: 0; transform: translateY(3px); }
+  5% { opacity: 0; transform: translateY(3px); }
+  30% { opacity: 1; transform: none; }
+  76% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: none; }
+}
+
+/* ---------------------------------------------------------------- */
+/* VISARJAN                                                          */
+/* ---------------------------------------------------------------- */
+
+.layer--farewell {
+  left: 0;
+  right: 0;
+  top: 50%;
+  padding: 0 var(--gutter);
+  transform: translateY(-50%);
+  text-align: center;
+}
+
+.layer--farewell.in {
+  transform: translateY(-50%);
+}
+
+.farewell-line {
+  margin: 0;
+  opacity: 0;
+  transition: opacity 3000ms ease;
+}
+
+.farewell-line span {
+  display: block;
+}
+
+.layer--farewell.in .farewell-line {
   opacity: 1;
-  transition-delay: 900ms;
 }
 
-.layer--closing.in .closing--second {
-  opacity: 1;
-  transition-delay: 5200ms;
+.layer--farewell.out .farewell-line {
+  opacity: 0;
+  transition: opacity 4000ms ease;
 }
 
-/* --- sound --- */
+.farewell-line--verse {
+  font-family: var(--serif);
+  font-size: clamp(32px, 8.4vw, 50px);
+  font-weight: 500;
+  line-height: 1.12;
+  color: var(--ink-1);
+}
 
-/* One word-sized control. Discoverable while sound is asleep, and almost
-   gone once it is on -- the room should be heard, not operated. The hit
-   area is larger than the words so it is still easy to find by thumb. */
+.farewell-line--chant {
+  margin-top: 40px;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.44em;
+  text-indent: 0.44em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+/* ---------------------------------------------------------------- */
+/* Sound                                                             */
+/* ---------------------------------------------------------------- */
+
 .sound {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: calc(8px + env(safe-area-inset-right, 0px));
+  top: calc(var(--safe-top) + 6px);
   min-height: 44px;
   padding: 0 12px;
   background: none;
   border: 0;
-  font: inherit;
+  font-family: var(--sans);
   font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.24em;
+  font-weight: 500;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: rgba(255, 224, 194, 0.34);
+  color: var(--ink-3);
+  text-shadow: var(--lift);
   cursor: pointer;
   pointer-events: auto;
   transition:
@@ -442,13 +711,11 @@ canvas {
 }
 
 .sound.is-on {
-  color: rgba(255, 224, 194, 0.14);
+  color: rgba(255, 232, 210, 0.42);
 }
 
-.sound:hover,
-.sound:focus-visible {
-  color: var(--ink-dim);
-  outline: none;
+.sound:hover {
+  color: var(--ink-1);
 }
 
 .sound.gone {
@@ -457,14 +724,113 @@ canvas {
 }
 
 /* ---------------------------------------------------------------- */
+/* Wider screens                                                     */
+/* ---------------------------------------------------------------- */
+
+@media (min-width: 720px) {
+  :root {
+    --gutter: 40px;
+  }
+
+  .brand {
+    font-size: 12px;
+  }
+
+  .headline {
+    font-size: clamp(44px, 4.4vw, 60px);
+  }
+
+  .litany {
+    font-size: 22px;
+  }
+
+  .support {
+    font-size: 15px;
+  }
+
+  .scrim--top {
+    height: 36%;
+  }
+
+  .scrim--bottom {
+    height: 42%;
+  }
+
+  .invites {
+    grid-template-columns: repeat(4, 1fr);
+    width: min(100%, 900px);
+    gap: 12px;
+  }
+
+  .invite {
+    min-height: 108px;
+    padding: 16px 16px 18px;
+  }
+
+  .invite-line {
+    font-size: 19px;
+  }
+
+  .choose-foot {
+    width: min(100%, 900px);
+  }
+
+  /* With room to spare the writing sits lower, over his base, where it
+     is closer to where it is going. */
+  .layer--write {
+    top: auto;
+    bottom: calc(var(--safe-bottom) + clamp(40px, 9vh, 96px));
+  }
+
+  .overlay[data-scene='write'] .scrim--top {
+    opacity: 0;
+  }
+
+  .overlay[data-scene='write'] .scrim--bottom {
+    opacity: 1;
+  }
+
+  .time-phase {
+    font-size: 19px;
+  }
+}
+
+/* Short landscape phones: keep the stack clear of the sculpture. */
+@media (max-height: 520px) {
+  .headline {
+    font-size: 30px;
+  }
+
+  .litany,
+  .support {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
 
 @media (prefers-reduced-motion: reduce) {
-  /* The scene itself is already slow; here we simply stop the fades
-     from adding motion on top of it. */
   .layer,
-  .closing,
-  .overlay {
-    transition-duration: 300ms;
+  .scrim,
+  .invite,
+  .rite,
+  .farewell-line {
+    transition-duration: 250ms !important;
+  }
+
+  .layer,
+  .layer.in {
+    transform: none;
+  }
+
+  .layer--write,
+  .layer--write.in,
+  .layer--write:not(.in) {
+    transform: translate(-50%, 0);
+  }
+
+  .closing-line {
+    animation-timing-function: linear;
   }
 }
 
@@ -480,9 +846,10 @@ canvas {
 .dev-panel {
   position: fixed;
   z-index: 100;
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 11px;
   color: #9fd0e8;
+  text-shadow: none;
   pointer-events: auto;
 }
 
@@ -532,8 +899,6 @@ canvas {
 .dev-head span {
   flex: 1;
   color: rgba(159, 208, 232, 0.6);
-  /* Stats are numeric and update constantly; tabular figures stop the
-     row from twitching as digits change width. */
   font-variant-numeric: tabular-nums;
 }
 
@@ -610,109 +975,4 @@ canvas {
 
 .dev-warn {
   color: #e8b45c;
-}
-
-/* --- the closing words --- */
-
-/* Editorial and slow. Each line waits for the one before it to have been
-   read, and nothing moves: the darkness is doing the work, and any
-   animation here would be the piece clearing its throat. */
-.layer--farewell {
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  text-align: center;
-}
-
-.layer--farewell.in {
-  transform: translateY(-50%);
-}
-
-.farewell {
-  margin: 0 0 1.5em;
-  font-size: clamp(14px, 1.7vw, 17px);
-  font-weight: 300;
-  letter-spacing: 0.06em;
-  line-height: 1.8;
-  color: var(--ink-dim);
-  opacity: 0;
-  transition: opacity 3000ms ease;
-}
-
-.layer--farewell.in .farewell {
-  opacity: 1;
-}
-
-/* Each line's delay is set inline from ui/farewell.ts, the schedule the
-   closing bell also reads. */
-.farewell--3 { margin-bottom: 0.4em; }
-.farewell--5 {
-  margin-top: 2.2em;
-  letter-spacing: 0.34em;
-  text-indent: 0.34em;
-  color: var(--ink);
-}
-.farewell--6 {
-  transition-delay: 26000ms;
-  font-size: clamp(11px, 1.2vw, 13px);
-  color: var(--ink-faint);
-}
-
-/* ---------------------------------------------------------------- */
-/* Narrow screens                                                    */
-/*                                                                   */
-/* The explanation has to land in the same five seconds on a phone,  */
-/* where there is far less room and Bappa still fills most of the    */
-/* frame. The statement stays at the top and stays readable; the     */
-/* countdown gives up its corner and becomes one quiet line under    */
-/* the call to action, because a stacked clock in a corner competes  */
-/* with the sculpture at this width.                                 */
-/* ---------------------------------------------------------------- */
-
-@media (max-width: 640px) {
-  .layer--masthead {
-    top: clamp(20px, 4vh, 40px);
-    padding: 0 22px;
-  }
-
-  .lede-primary {
-    font-size: 17px;
-    margin-top: 14px;
-  }
-
-  .lede-secondary {
-    font-size: 11.5px;
-    margin-top: 10px;
-  }
-
-  .layer--foot {
-    gap: 10px;
-    padding: 0 20px;
-  }
-
-  .layer--countdown {
-    left: 0;
-    right: 0;
-    /* Clear of the foot stack, which is three lines tall here. At 13vh
-       the clock landed on top of the call to action on a 812pt phone. */
-    bottom: clamp(118px, 18vh, 158px);
-    text-align: center;
-  }
-
-  /* Laid out across rather than down: one line reads as a note, a
-     stacked block reads as a widget. */
-  .clock {
-    flex-direction: row;
-    justify-content: center;
-    gap: 16px;
-  }
-
-  .clock em {
-    font-size: 12px;
-  }
-
-  .clock-label {
-    margin-top: 7px;
-  }
 }

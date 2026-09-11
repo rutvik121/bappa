@@ -11,18 +11,14 @@ import { BELL_LINE, FAREWELL_LINES } from '../ui/farewell';
  * AudioManager decides how a sound is made; this file decides which sound,
  * how loud, when, and how it moves.
  *
- * The sound world is a Ganeshotsav one: tanpura and bansuri in the room,
- * a pandal at night outside it, marigold petals and akshata, ghanti and
- * ghanta, dhol and tasha, a shankh. Every offering is heard as something a
- * person would recognise from a puja; all of them resolve into the same
- * temple bell; and Visarjan is a dhol-tasha procession that recedes into
- * the distance as he goes.
+ * Tanpura and bansuri in the room and the pandal outside. Each offering
+ * approaches in its own way -- marigold petals, a bansuri rising, a heavy
+ * dhol and a coconut broken, a diya lit -- and every one of them is
+ * received the same way: a touch on dry clay, and the clay body answering.
+ * Visarjan gets quieter as he goes, never louder.
  *
  * Levels are dB relative to each asset's normalisation -- loops sit at RMS
- * -20 dBFS, one-shots peak at -1 -- so the music's -16 puts it near
- * -32 dBFS in the mix. Measured from offline renders (/dev/sound): offering
- * sounds peak around -12 to -15, the ghanta around -14, the procession
- * around -11, the final shankh around -15.
+ * -20 dBFS, one-shots peak at -1.
  */
 
 /** dB to gain. Anything at or below -80 is silence, not a whisper. */
@@ -53,7 +49,7 @@ export const MASTER = {
   highpass: 32,
   airShelfDb: -1.5,
   reverbDb: -4,
-  /** Keeps the dhol's low end out of the reverb, where it turns to mud. */
+  /** Keeps low end out of the reverb, where it turns to mud. */
   reverbHighpass: 180,
   reverbSeconds: 3.4,
   reverbSecondsLow: 2.2,
@@ -76,7 +72,7 @@ export const SPACE = {
   welcomeAt: 3,
   welcomeDb: -30,
   /** The music steps back while an offering is happening. */
-  duckDb: -7,
+  duckDb: -8,
   /** How far the pandal ambience wanders, so it never sits still. */
   wanderDb: 2.5,
   wanderGap: [8, 15] as const,
@@ -85,7 +81,7 @@ export const SPACE = {
 } as const;
 
 /* ------------------------------------------------------------------ */
-/* offerings                                                           */
+/* offerings: the approach                                             */
 /* ------------------------------------------------------------------ */
 
 type Stages = { transform: number; travel: number };
@@ -100,18 +96,13 @@ export interface OfferingSound {
   /** Sustained layer steered by the material's motion in flight. */
   carrier: AssetName | null;
   carrierDb: Stages;
-  /** The moment it enters him. */
-  contact: AssetName;
-  contactDb: number;
-  /** How far the contact blooms into the hall. */
-  contactWet: number;
   /** Travelling speed at which the offering is at its most present. */
   speedRef: number;
   wet: number;
 }
 
 export const OFFERING: Record<ContributionKind, OfferingSound> = {
-  // Warm and intimate: marigold petals on a thali, a small ghanti.
+  // Soft, warm, gathering: marigold petals on a thali.
   GRATITUDE: {
     gather: ['marigold-petals'],
     gatherDb: -15,
@@ -119,54 +110,39 @@ export const OFFERING: Record<ContributionKind, OfferingSound> = {
     releaseDb: -80,
     carrier: null,
     carrierDb: { transform: -80, travel: -80 },
-    contact: 'ghanti',
-    contactDb: -10,
-    contactWet: 0.3,
     speedRef: 0.6,
     wet: 0.22,
   },
-  // Hope: ghungroo, a bansuri phrase rising with the particles, a high bell.
-  // The bansuri is dense and sustained, so it sits well under its bell.
+  // Light and upward: ghungroo, and a bansuri phrase rising with it.
   WISH: {
     gather: ['ghungroo'],
-    gatherDb: -16,
+    gatherDb: -17,
     release: 'bansuri-rise',
-    releaseDb: -19,
+    releaseDb: -20,
     carrier: null,
     carrierDb: { transform: -80, travel: -80 },
-    contact: 'bell-high',
-    contactDb: -12,
-    contactWet: 0.36,
     speedRef: 0.8,
     wet: 0.32,
   },
-  // Resistance: heavy dhol, a coconut broken as an offering, a dhol boom.
-  // The break and the boom land within a fifth of a second of each other,
-  // so each is kept a little lower than it would be alone.
+  // Heavy and resistant: dhol knocks, a low roll, a coconut broken.
   VIGHNA: {
     gather: ['dhol-knock-1', 'dhol-knock-2', 'dhol-knock-3'],
-    gatherDb: -15,
+    gatherDb: -16,
     release: null,
     releaseDb: -80,
     carrier: 'dhol-roll',
-    carrierDb: { transform: -20, travel: -17 },
-    contact: 'dhol-boom',
-    contactDb: -13,
-    contactWet: 0.2,
+    carrierDb: { transform: -21, travel: -18 },
     speedRef: 1.1,
     wet: 0.18,
   },
-  // Something begun: a diya lit, a tabla heartbeat, a short shankh.
+  // Organic and growing: a diya lit, a tabla heartbeat.
   PROMISE: {
     gather: ['diya-light'],
     gatherDb: -17,
     release: null,
     releaseDb: -80,
     carrier: 'tabla-pulse',
-    carrierDb: { transform: -22, travel: -18 },
-    contact: 'shankh-short',
-    contactDb: -17,
-    contactWet: 0.3,
+    carrierDb: { transform: -23, travel: -19 },
     speedRef: 0.6,
     wet: 0.24,
   },
@@ -174,32 +150,41 @@ export const OFFERING: Record<ContributionKind, OfferingSound> = {
 
 /** Vighna only. */
 export const BREAK = {
-  coconutDb: -14,
+  coconutDb: -15,
   /** Knocks per second while the obstacle is still heavy and moving. */
   knockRate: 3,
 } as const;
 
-/** Akshata falling on the thali: the sound of material entering him. */
-export const ABSORB = {
-  riceDb: -18,
-  /** Arrival rate (share of the offering per second) heard at full level. */
-  fullShare: 0.9,
-  wet: 0.3,
-} as const;
-
 /* ------------------------------------------------------------------ */
-/* Bappa                                                               */
+/* Bappa received it                                                   */
 /* ------------------------------------------------------------------ */
 
-export const BAPPA = {
-  /** The temple ghanta every offering resolves into. */
-  ghantaDb: -14,
-  ghantaWet: 0.34,
-  /** The ghanta grows this much fuller, and rings further, as he is built. */
-  richnessDb: 3,
-  richnessWet: 0.12,
-  /** A ghanta still ringing is let go this fast when the next one comes. */
+/**
+ * The same for all four offerings, because what they become is the same.
+ *
+ * approach → a tiny tactile touch on the frame of contact → the clay body
+ * answering, warm and low, from inside the material → decay → silence.
+ * Not a bell, not a whoosh, not an impact: terracotta receiving something.
+ */
+export const RECEIVE = {
+  touch: ['clay-touch-1', 'clay-touch-2', 'clay-touch-3'] as const,
+  touchDb: -15,
+  resonance: ['ghatam-1', 'ghatam-2', 'ghatam-3'] as const,
+  resonanceDb: -12,
+  /** The body answers a few milliseconds after the skin is touched. */
+  resonanceDelay: 0.04,
+  /** How far the resonance blooms into the hall. */
+  wetFrom: 0.08,
+  wetTo: 0.3,
+  /** A little fuller, and a little further, as he is built. */
+  richnessDb: 2.5,
+  /** A resonance still ringing is let go this fast when the next one comes. */
   stealTau: 0.35,
+  /** The rest of the offering entering him: sparse, tiny touches. */
+  arrivalDb: -27,
+  /** Touches per second per share-of-the-offering-per-second arriving. */
+  arrivalRate: 5,
+  arrivalMax: 4,
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -208,27 +193,32 @@ export const BAPPA = {
 
 /**
  * Curves over dissolve (0 whole, 1 the last clay gone, 1.34 the last grain
- * of light gone), so the procession moves exactly as he does.
+ * of light gone). Every one of them only falls once he starts to go: the
+ * sound of Visarjan is the sound being taken away.
  */
 export const VISARJAN = {
   /** Stage 1: the music stops for the stillness. */
   musicTau: 0.8,
-  /** The pandal stays, low, until he has gone. */
-  pandalTrim: [[0, -12], [0.86, -14], [1.2, -24], [1.3, -34], [1.335, -80]] as Curve,
+  /** The pandal, low, leaving with him. */
+  pandalTrim: [[0, -14], [0.5, -18], [0.86, -22], [1.2, -30], [1.3, -40], [1.335, -80]] as Curve,
 
-  /** The dhol-tasha pathak arrives with the first release and carries him. */
-  dholDb: [
-    [0, -80], [0.005, -34], [0.15, -14], [0.5, -13], [0.86, -13], [1.0, -18], [1.16, -25], [1.3, -40], [1.335, -80],
-  ] as Curve,
-  /** ...and recedes into the distance as the particles drift away. */
-  dholCutoff: [[0, 16000], [0.86, 14000], [1.05, 5000], [1.2, 2200], [1.33, 900]] as Curve,
-  dholWet: [[0, 0.08], [0.86, 0.12], [1.2, 0.45], [1.33, 0.7]] as Curve,
+  /**
+   * A procession very far away -- dhol and tasha heard across the city --
+   * that never comes closer and only recedes.
+   */
+  dholDb: [[0, -80], [0.004, -44], [0.12, -31], [0.35, -32], [0.86, -37], [1.1, -45], [1.3, -58], [1.335, -80]] as Curve,
+  dholCutoff: [[0, 2400], [0.5, 1900], [0.86, 1300], [1.3, 650]] as Curve,
+  dholWet: [[0, 0.45], [0.86, 0.6], [1.3, 0.85]] as Curve,
 
-  /** Clay coming away from the murti through the breakdown. */
-  crumbleDb: [[0, -80], [0.06, -30], [0.35, -22], [0.7, -26], [0.86, -80]] as Curve,
+  /** Material movement, then clay coming away: the foreground of the loss. */
+  crumbleDb: [[0, -80], [0.04, -32], [0.3, -21], [0.6, -25], [0.86, -34], [1.0, -80]] as Curve,
 
-  /** Gulal thrown as the particle Bappa lets go. */
-  gulalDb: -14,
+  /** As particles leave: tiny touches, further and further apart. */
+  touchRate: [[0.6, 0], [0.8, 1.6], [1.05, 0.9], [1.25, 0.3], [1.33, 0]] as Curve,
+  touchDb: -32,
+
+  /** Gulal on the air as he lets go of his shape. Barely there. */
+  gulalDb: -23,
 } as const;
 
 /* ------------------------------------------------------------------ */
@@ -236,9 +226,9 @@ export const VISARJAN = {
 /* ------------------------------------------------------------------ */
 
 export const FINAL = {
-  /** One shankh, far away across the water. */
-  shankhDb: -16,
-  /** Seconds after the words begin: as GANPATI BAPPA MORYA starts to appear. */
+  /** One shankh, impossibly far away. */
+  shankhDb: -22,
+  /** Seconds after the words begin: as the chant starts to appear. */
   shankhAt: (FAREWELL_LINES[BELL_LINE].at + 700) / 1000,
   /** How long it is allowed to ring before the context is released. */
   tail: 13,

@@ -25,7 +25,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -47,30 +47,34 @@ const ASSETS = [
   { name: 'bhakti-ambience', kind: 'loop', channels: 2, xfade: 5 },
   { name: 'pandal-night', kind: 'loop', channels: 2, xfade: 1.5, rate: 32000 },
 
-  // --- gratitude ---
+  // --- gratitude: the approach ---
   { name: 'marigold-petals', kind: 'oneshot', channels: 1 },
-  { name: 'ghanti', kind: 'oneshot', channels: 1 },
 
-  // --- wish ---
+  // --- wish: the approach ---
   { name: 'ghungroo', kind: 'oneshot', channels: 1 },
   { name: 'bansuri-rise', kind: 'oneshot', channels: 1 },
-  { name: 'bell-high', kind: 'oneshot', channels: 1 },
 
-  // --- vighna ---
+  // --- vighna: the approach ---
   { name: 'dhol-knock-1', kind: 'oneshot', channels: 1, rate: 32000 },
   { name: 'dhol-knock-2', kind: 'oneshot', channels: 1, rate: 32000 },
   { name: 'dhol-knock-3', kind: 'oneshot', channels: 1, rate: 32000 },
   { name: 'dhol-roll', kind: 'loop', channels: 1, xfade: 0.8, rate: 32000 },
   { name: 'coconut-break', kind: 'oneshot', channels: 1 },
-  { name: 'dhol-boom', kind: 'oneshot', channels: 1, rate: 32000 },
 
-  // --- promise ---
+  // --- promise: the approach ---
   { name: 'diya-light', kind: 'oneshot', channels: 1 },
   { name: 'tabla-pulse', kind: 'loop', channels: 1, xfade: 0.6 },
-  { name: 'shankh-short', kind: 'oneshot', channels: 1 },
 
-  // --- Bappa ---
-  { name: 'akshata-rice', kind: 'loop', channels: 1, xfade: 0.6 },
+  // --- Bappa received it: one sound for all four ---
+  // A fingertip on dry clay, then the clay body answering.
+  { name: 'clay-touch-1', kind: 'oneshot', channels: 1 },
+  { name: 'clay-touch-2', kind: 'oneshot', channels: 1 },
+  { name: 'clay-touch-3', kind: 'oneshot', channels: 1 },
+  { name: 'ghatam-1', kind: 'oneshot', channels: 1 },
+  { name: 'ghatam-2', kind: 'oneshot', channels: 1 },
+  { name: 'ghatam-3', kind: 'oneshot', channels: 1 },
+
+  // --- arriving ---
   { name: 'temple-ghanta', kind: 'oneshot', channels: 1 },
 
   // --- Visarjan ---
@@ -185,6 +189,13 @@ function wav(path, chs) {
 mkdirSync(OUT, { recursive: true });
 rmSync(WORK, { recursive: true, force: true });
 mkdirSync(WORK, { recursive: true });
+
+// Anything in public/audio that is no longer in the list is removed, so a
+// retired sound never ships as dead weight.
+const keep = new Set(ASSETS.map((a) => `${a.name}.mp3`));
+for (const f of readdirSync(OUT)) {
+  if (f.endsWith('.mp3') && !keep.has(f)) rmSync(join(OUT, f));
+}
 
 const manifest = {};
 const report = [];

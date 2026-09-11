@@ -137,21 +137,25 @@ export function SmokeSystem({ perf }: { perf: PerfProfile }) {
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   useFrame(() => {
-    const { state, elapsed } = useScene.getState();
+    const { state, elapsed, mood } = useScene.getState();
     uniforms.uTime.value = performance.now() * 0.001;
 
-    // The haze thickens slightly as the visitor comes closer, and thins
-    // to nothing once Bappa is gone -- the room empties of him and of it.
-    let target = 0.05;
-    if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') target = 0.075;
-    if (state === 'TRANSFORMING') target = 0.065;
+    // Barely there. Heavier than this and the two agarbatti ribbons read
+    // as orange streaks running the height of the frame, competing with
+    // the sculpture they are meant to be burning in front of.
+    let target = 0.028;
+    if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') target = 0.038;
+    if (state === 'TRANSFORMING') target = 0.034;
+    // A vighna thickens the air a little; a wish clears it.
+    if (mood === 'VIGHNA') target += 0.012;
+    if (mood === 'WISH') target -= 0.01;
     // The room empties of him and of his incense.
     //
     // Driven straight off elapsed rather than eased toward a target: an
     // easing only reaches zero if enough frames happen to be drawn, and
     // "nothing remains" has to be a guarantee rather than a tendency.
     if (state === 'VISARJAN') {
-      uniforms.uOpacity.value = Math.max(0, 0.05 * (1 - elapsed / 34));
+      uniforms.uOpacity.value = Math.max(0, 0.028 * (1 - elapsed / 34));
       return;
     }
 

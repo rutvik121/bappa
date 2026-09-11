@@ -3,9 +3,24 @@
 import { useEffect, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useScene } from '../state/sceneState';
+import { useScene, type ContributionType } from '../state/sceneState';
 import { BAPPA_CENTER } from './GanpatiModel';
 import type { PerfProfile } from '../systems/perf';
+
+/**
+ * How the room answers the offering a visitor has chosen. Deliberately
+ * small: a warmer key for gratitude, a lifted rim for a wish, a heavier,
+ * darker room for a vighna, a livelier fill for a promise. It should be
+ * felt, not noticed.
+ */
+const MOOD: Record<ContributionType, { key: number; rim: number; fill: number; color: string }> = {
+  GRATITUDE: { key: 1.07, rim: 0.95, fill: 1.2, color: '#ffd4ac' },
+  WISH: { key: 1.03, rim: 1.2, fill: 1.0, color: '#ffe8d2' },
+  VIGHNA: { key: 0.84, rim: 0.8, fill: 0.7, color: '#ffdcc2' },
+  PROMISE: { key: 1.0, rim: 1.05, fill: 1.45, color: '#ffe2c0' },
+};
+
+const BASE_KEY = new THREE.Color('#ffe0c2');
 
 /**
  * One key, one rim, a whisper of fill. Intensities are in candela with
@@ -17,6 +32,9 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
   const { scene } = useThree();
   const key = useRef<THREE.SpotLight>(null);
   const rim = useRef<THREE.SpotLight>(null);
+  const fill = useRef<THREE.PointLight>(null);
+  const mood = useRef({ key: 1, rim: 1, fill: 1 });
+  const moodColor = useRef(new THREE.Color());
 
   /**
    * A spotlight aims at its `target` object's world position, and that
@@ -40,17 +58,23 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
 
   useFrame(() => {
     const t = performance.now() * 0.001;
-    const { state } = useScene.getState();
+    const { state, mood: chosen } = useScene.getState();
 
     // The key light breathes on a long, irregular cycle -- the visual
-    // signature of an oil flame rather than a bulb. Two detuned sines
-    // never repeat audibly within a session.
+    // signature of an oil flame rather than a bulb.
     const flicker =
       1 + Math.sin(t * 1.9) * 0.018 + Math.sin(t * 0.63) * 0.026 + Math.sin(t * 4.1) * 0.008;
 
-    // Intimacy comes from the camera and the thickening haze, not from
-    // more light -- raising the key here only flattened the clay.
-    const intimacy = state === 'CONTRIBUTING' || state === 'UNDERSTANDING' ? 1.04 : 1.0;
+    // Eased toward the chosen offering over a couple of seconds, and back.
+    const m = chosen ? MOOD[chosen] : null;
+    const e = 0.02;
+    mood.current.key += ((m?.key ?? 1) - mood.current.key) * e;
+    mood.current.rim += ((m?.rim ?? 1) - mood.current.rim) * e;
+    mood.current.fill += ((m?.fill ?? 1) - mood.current.fill) * e;
+    if (key.current) {
+      moodColor.current.set(m?.color ?? BASE_KEY);
+      key.current.color.lerp(moodColor.current, e);
+    }
 
     // Visarjan extinguishes the room. The key holds while there is still
     // a body to light, then goes out over the last twenty seconds, which
@@ -62,8 +86,9 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
       extinction *= extinction;
     }
 
-    if (key.current) key.current.intensity = 34 * flicker * intimacy * extinction;
-    if (rim.current) rim.current.intensity = 26 * (2 - flicker) * extinction;
+    if (key.current) key.current.intensity = 34 * flicker * mood.current.key * extinction;
+    if (rim.current) rim.current.intensity = 26 * (2 - flicker) * mood.current.rim * extinction;
+    if (fill.current) fill.current.intensity = 0.7 * mood.current.fill * extinction;
   });
 
   return (
@@ -102,7 +127,7 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
 
       {/* Fill: a dim warm bounce from below-front, standing in for the
           light a floor would throw back. Never enough to read as a light. */}
-      <pointLight position={[0.6, 0.25, 1.9]} color="#ffc79c" intensity={0.7} decay={2} distance={5} />
+      <pointLight ref={fill} position={[0.6, 0.25, 1.9]} color="#ffc79c" intensity={0.7} decay={2} distance={5} />
 
       {/* Ambient is deliberately near-nothing: just enough that the
           unlit side is not pure black clipping. */}
@@ -111,4 +136,3 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
     </>
   );
 }
-

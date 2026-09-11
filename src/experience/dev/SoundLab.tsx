@@ -11,7 +11,9 @@ import { getPerfProfile } from '../systems/perf';
 import {
   DURATION,
   FORM_HOLD,
+  STILLNESS_AFTER,
   STILLNESS_BEFORE,
+  TAKEN_IN_SHARE,
   glyphsToWorld,
 } from '../components/ContributionController';
 import { visarjanDissolveAt } from '../components/DissolveController';
@@ -42,6 +44,8 @@ class Sim {
   dissolve = 0;
   readonly system: ParticleSystem;
   private spawned = false;
+  private peak = 0;
+  private takenInAt = -1;
   private readonly budget: number;
 
   constructor() {
@@ -54,6 +58,8 @@ class Sim {
     this.state = state;
     this.elapsed = 0;
     this.spawned = false;
+    this.peak = 0;
+    this.takenInAt = -1;
   }
 
   offer(type: ContributionType) {
@@ -75,9 +81,19 @@ class Sim {
           this.set('TRANSFORMING');
         }
         break;
-      case 'TRANSFORMING':
-        if (this.elapsed >= DURATION.TRANSFORMING) this.set('COMPLETE');
+      case 'TRANSFORMING': {
+        // Mirrors ContributionController: complete once it has been taken
+        // in, plus the breath of stillness.
+        const tel = this.system.telemetry;
+        const live = tel.journey + tel.settling;
+        this.peak = Math.max(this.peak, live);
+        if (this.takenInAt < 0 && this.elapsed > 1.5 && this.peak > 0 && live <= this.peak * TAKEN_IN_SHARE) {
+          this.takenInAt = this.elapsed;
+        }
+        const takenIn = this.takenInAt >= 0 && this.elapsed >= this.takenInAt + STILLNESS_AFTER;
+        if (takenIn || this.elapsed >= DURATION.TRANSFORMING) this.set('COMPLETE');
         break;
+      }
       case 'COMPLETE':
         if (this.elapsed >= DURATION.COMPLETE) this.set('IDLE');
         break;

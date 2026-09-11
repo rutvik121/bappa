@@ -235,7 +235,7 @@ export class SoundDirector {
       o.contacted = true;
       o.contactAt = o.t;
       o.pan = panOf(tel.lastArrivalX);
-      this.send('OFFERING_CONTACT', { type: o.type, pan: o.pan });
+      this.send('OFFERING_CONTACT', { type: o.type, pan: o.pan, amount: f.build });
     }
 
     const cracked = (tel.cracked - o.cracked0) / total;
