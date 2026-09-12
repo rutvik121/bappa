@@ -44,7 +44,36 @@ export interface TransportHandlers {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const usingRealtime = Boolean(SUPABASE_URL && SUPABASE_ANON);
+/**
+ * Keys are base64url and dots, and nothing else.
+ *
+ * A key copied out of the dashboard while it was still masked arrives
+ * full of bullet characters, and the only symptom is an opaque websocket
+ * handshake failure with the key -- percent-encoded into unreadability --
+ * buried in the URL. Caught here so it says what is actually wrong.
+ */
+const wellFormedKey = (k: string | undefined): boolean =>
+  Boolean(k) &&
+  /^[A-Za-z0-9._-]+$/.test(k!) &&
+  // Either shape Supabase issues: the legacy anon JWT, or a publishable
+  // key. The charset above is what actually catches a masked paste.
+  (k!.split('.').length === 3 || k!.startsWith('sb_publishable_'));
+
+export const usingRealtime = Boolean(SUPABASE_URL) && wellFormedKey(SUPABASE_ANON);
+
+if (
+  process.env.NODE_ENV !== 'production' &&
+  SUPABASE_URL &&
+  SUPABASE_ANON &&
+  !wellFormedKey(SUPABASE_ANON)
+) {
+  console.error(
+    '[bappa] NEXT_PUBLIC_SUPABASE_ANON_KEY is not a valid key. It usually means ' +
+      'it was copied from the dashboard while still masked, so it contains bullet ' +
+      'characters instead of the key. Reveal it first, then copy. Falling back to ' +
+      'the event stream in the meantime.'
+  );
+}
 
 /** A row as the database publishes it. */
 interface Row {
@@ -101,11 +130,47 @@ async function snapshotNow(): Promise<BappaSnapshot | null> {
 /* Supabase realtime                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * How long the socket is given to say it is listening before the stream
+ * is opened instead. Generous: a slow phone on a bad connection should
+ * not be given up on early, but nobody should sit in front of a Bappa
+ * that has quietly stopped hearing anything either.
+ */
+const SUBSCRIBE_GRACE_MS = 8000;
+
 function realtimeTransport(h: TransportHandlers): Transport {
   let closed = false;
   let cleanup: (() => void) | null = null;
+  /** Stands in when the socket cannot be loaded, opened, or kept. */
+  let fallback: Transport | null = null;
+
+  /**
+   * Anything that means "this browser is not going to hear about
+   * offerings over the socket" ends up here.
+   *
+   * Realtime is the better transport, not the only one. If it does not
+   * come up -- the project has it switched off, a proxy eats websockets,
+   * the subscription errors or simply never lands -- the stream still
+   * works, because it is the page's own origin over ordinary HTTP.
+   * Without this the client reported itself offline and then did nothing
+   * at all, which looks exactly like the collective being broken: the
+   * tally only moved when the visitor happened to reload.
+   */
+  const giveUpOnSocket = () => {
+    if (closed || fallback) return;
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[bappa] realtime did not come up; falling back to the event stream');
+    }
+    h.onStatus('offline');
+    cleanup?.();
+    cleanup = null;
+    fallback = streamTransport(h);
+  };
+
+  const grace = setTimeout(giveUpOnSocket, SUBSCRIBE_GRACE_MS);
 
   void (async () => {
+   try {
     // Loaded only on the path that uses it, so a deploy without Supabase
     // never ships the client to a visitor.
     const { createClient } = await import('@supabase/supabase-js');
@@ -148,23 +213,37 @@ function realtimeTransport(h: TransportHandlers): Transport {
         (payload) => h.onEvent(rowToEvent(payload.new as Row, h.snapshot()))
       )
       .subscribe((status) => {
+        if (closed || fallback) return;
         if (status === 'SUBSCRIBED') {
+          clearTimeout(grace);
           h.onStatus('live');
           void catchUp();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          h.onStatus('offline');
+          // Not just a status to report: with nothing behind it this was
+          // the end of the browser hearing anything.
+          clearTimeout(grace);
+          giveUpOnSocket();
         }
       });
 
     cleanup = () => {
       void db.removeChannel(channel);
     };
+   } catch {
+    // The realtime client never arrived -- a chunk that failed to fetch,
+    // a tab left open across a deploy, a network that dropped at exactly
+    // the wrong moment.
+    clearTimeout(grace);
+    giveUpOnSocket();
+   }
   })();
 
   return {
     close() {
       closed = true;
+      clearTimeout(grace);
       cleanup?.();
+      fallback?.close();
     },
   };
 }
@@ -230,6 +309,17 @@ function streamTransport(h: TransportHandlers): Transport {
 /* ------------------------------------------------------------------ */
 
 export function connect(h: TransportHandlers): Transport {
+  // Which way this browser is listening is the first thing worth knowing
+  // when he stops appearing to hear anything, and it is otherwise
+  // invisible. Development only.
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(
+      usingRealtime
+        ? '[bappa] listening over supabase realtime'
+        : '[bappa] listening over the event stream ' +
+            '(NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are not set)'
+    );
+  }
   return usingRealtime ? realtimeTransport(h) : streamTransport(h);
 }
 
