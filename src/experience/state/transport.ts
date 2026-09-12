@@ -104,8 +104,11 @@ async function snapshotNow(): Promise<BappaSnapshot | null> {
 function realtimeTransport(h: TransportHandlers): Transport {
   let closed = false;
   let cleanup: (() => void) | null = null;
+  /** Stands in if the realtime client cannot be loaded at all. */
+  let fallback: Transport | null = null;
 
   void (async () => {
+   try {
     // Loaded only on the path that uses it, so a deploy without Supabase
     // never ships the client to a visitor.
     const { createClient } = await import('@supabase/supabase-js');
@@ -159,12 +162,24 @@ function realtimeTransport(h: TransportHandlers): Transport {
     cleanup = () => {
       void db.removeChannel(channel);
     };
+   } catch {
+    // The realtime client never arrived -- a chunk that failed to fetch,
+    // a tab left open across a deploy, a network that dropped at exactly
+    // the wrong moment. Without this the promise simply rejected and this
+    // browser was left with no transport at all: no realtime, no
+    // fallback, and nothing said. He has to stay watchable, so it falls
+    // back to the stream, which needs nothing but the page's own origin.
+    if (closed) return;
+    h.onStatus('offline');
+    fallback = streamTransport(h);
+   }
   })();
 
   return {
     close() {
       closed = true;
       cleanup?.();
+      fallback?.close();
     },
   };
 }
