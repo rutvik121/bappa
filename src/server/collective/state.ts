@@ -1,4 +1,5 @@
-import { getStore } from './store';
+import { getStore, PendingError, type OfferingRecord } from './store';
+import { hashAddress } from './supabase';
 import { festivalNow, FESTIVAL_DAYS, TARGET_OFFERINGS } from './config';
 import {
   formationFrom,
@@ -22,8 +23,13 @@ import {
 const RATE_LIMIT = 20;
 const RATE_WINDOW_SECONDS = 3600;
 
-/** How long a submission key is remembered. Comfortably past any retry. */
-const IDEMPOTENCY_TTL_SECONDS = 900;
+/**
+ * Addresses are hashed before they are used as a bucket, so limiting
+ * abuse does not require keeping a record of who was here.
+ */
+function rateBucket(ip: string): string {
+  return `bappa:rate:${hashAddress(ip)}`;
+}
 
 /** Most events a reconnecting client is given before it is told to resync. */
 export const MAX_CATCHUP = 64;
@@ -45,6 +51,8 @@ export async function getSnapshot(): Promise<BappaSnapshot> {
     startsAt: when.startsAt,
     endsAt: when.endsAt,
     shared: store.shared,
+    offeringTarget: TARGET_OFFERINGS,
+    festivalDays: FESTIVAL_DAYS,
   };
 }
 
@@ -94,61 +102,35 @@ export async function submitOffering(input: SubmitInput, ip: string): Promise<Su
     return { ok: false, reason: 'closed', snapshot: await getSnapshot() };
   }
 
-  // A retry, a double click, a refresh mid-submission: all of them arrive
-  // with the same key, and all of them get the first answer back rather
-  // than a second offering.
-  const claimKey = `bappa:submit:${submissionId}`;
-  const existing = await store.claim(claimKey, 'pending', IDEMPOTENCY_TTL_SECONDS);
-  if (existing !== null) {
-    const replayed = safeParse<OfferingEvent>(existing);
-    const snapshot = await getSnapshot();
-    // A finished one replays exactly. 'pending' means the first attempt is
-    // still in flight and there is no answer yet to give -- said plainly,
-    // so the client knows this is its own offering arriving twice and not
-    // a refusal it should react to.
-    return replayed
-      ? { ok: true, offering: replayed, snapshot, duplicate: true }
-      : { ok: false, reason: 'duplicate', snapshot };
-  }
-
-  const used = await store.bump(`bappa:rate:${ip}`, RATE_WINDOW_SECONDS);
+  const used = await store.bump(rateBucket(ip), RATE_WINDOW_SECONDS);
   if (used > RATE_LIMIT) {
     return { ok: false, reason: 'throttled', snapshot: await getSnapshot() };
   }
 
-  const count = await store.addOffering();
+  const intensity = clamp01(asNumber(input.intensity, 0.5));
+  const seed = Math.floor(asNumber(input.seed, Math.random() * 2 ** 31)) >>> 0;
 
-  const offering: OfferingEvent = {
-    id: submissionId,
-    seq: 0,
-    type: type as OfferingType,
-    createdAt: when.now,
-    intensity: clamp01(asNumber(input.intensity, 0.5)),
-    seed: Math.floor(asNumber(input.seed, Math.random() * 2 ** 31)) >>> 0,
-    formationTarget: progressFor(when.day, when.lifecycle, count),
+  // Counted, recorded and deduplicated in one call. A retry of an id
+  // already here comes back as the original, and the tally does not move.
+  let accepted;
+  try {
+    accepted = await store.leaveOffering({ id: submissionId, type, intensity, seed });
+  } catch (e) {
+    // The first attempt at this id is still being written. Its answer is
+    // the one that counts, so this is said plainly rather than as a
+    // refusal the client should react to.
+    if (e instanceof PendingError) {
+      return { ok: false, reason: 'duplicate', snapshot: await getSnapshot() };
+    }
+    throw e;
+  }
+
+  return {
+    ok: true,
+    offering: toEvent(accepted.record, when.day, when.lifecycle),
+    snapshot: await getSnapshot(),
+    duplicate: accepted.duplicate,
   };
-
-  const formationProgress = offering.formationTarget;
-
-  // The sequence is part of the event, so it is stamped onto the offering
-  // before the body is written rather than after -- serialising first left
-  // every broadcast offering claiming seq 0.
-  offering.seq = await store.append((seq) => {
-    offering.seq = seq;
-    return JSON.stringify({
-      kind: 'OFFERING_RECEIVED',
-      offering,
-      offeringsCount: count,
-      formationProgress,
-    } satisfies CollectiveEvent);
-  });
-
-  // Remember the whole answer, so a retry replays it exactly rather than
-  // being refused or -- far worse -- counted again. `put`, not `claim`:
-  // claiming again would find our own 'pending' marker and leave it.
-  await store.put(claimKey, JSON.stringify(offering), IDEMPOTENCY_TTL_SECONDS);
-
-  return { ok: true, offering, snapshot: await getSnapshot(), duplicate: false };
 }
 
 /** Development only: stand the collective at a given tally. */
@@ -157,25 +139,51 @@ export async function setOfferings(n: number): Promise<BappaSnapshot> {
   return getSnapshot();
 }
 
-export async function eventsSince(seq: number): Promise<{ events: CollectiveEvent[]; seq: number; gap: boolean }> {
+export async function eventsSince(
+  seq: number
+): Promise<{ events: CollectiveEvent[]; seq: number; gap: boolean }> {
   const store = getStore();
+  const when = festivalNow();
   const head = await store.head();
 
   // Further behind than the log goes: there is nothing useful to replay,
   // and the right answer is the current state, not the path to it.
   if (head - seq > MAX_CATCHUP) return { events: [], seq: head, gap: true };
 
-  const stored = await store.since(seq, MAX_CATCHUP);
-  const events: CollectiveEvent[] = [];
-  for (const e of stored) {
-    const parsed = safeParse<CollectiveEvent>(e.body);
-    if (parsed) events.push(parsed);
-  }
+  const records = await store.since(seq, MAX_CATCHUP);
 
-  return { events, seq: stored.length ? stored[stored.length - 1].seq : head, gap: false };
+  const events: CollectiveEvent[] = records.map((r) => ({
+    kind: 'OFFERING_RECEIVED',
+    offering: toEvent(r, when.day, when.lifecycle),
+    offeringsCount: r.offeringsCount,
+    formationProgress: progressFor(when.day, when.lifecycle, r.offeringsCount),
+  }));
+
+  return { events, seq: records.length ? records[records.length - 1].seq : head, gap: false };
 }
 
 /* ------------------------------------------------------------------ */
+
+/**
+ * A stored offering as everyone else learns about it.
+ *
+ * Formation is resolved at read time rather than stored on the row: it is
+ * a function of the tally and the day, and the day moves without any
+ * offering being made. Computing it here keeps one definition of the
+ * curve -- the shared one -- and means a row written on day three still
+ * reads correctly on day nine.
+ */
+function toEvent(r: OfferingRecord, day: number, lifecycle: string): OfferingEvent {
+  return {
+    id: r.id,
+    seq: r.seq,
+    type: r.type as OfferingType,
+    createdAt: r.createdAt,
+    intensity: r.intensity,
+    seed: r.seed,
+    formationTarget: progressFor(day, lifecycle, r.offeringsCount),
+  };
+}
 
 function cleanId(v: unknown): string | null {
   if (typeof v !== 'string') return null;
@@ -192,12 +200,4 @@ function asNumber(v: unknown, fallback: number): number {
 
 function clamp01(v: number) {
   return Math.min(1, Math.max(0, v));
-}
-
-function safeParse<T>(raw: string): T | null {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
 }

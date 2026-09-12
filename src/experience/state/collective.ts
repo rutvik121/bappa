@@ -9,6 +9,7 @@ import {
   type OfferingType,
 } from '@/shared/collective';
 import { setServerTime } from './festival';
+import { connect, type Transport, type TransportHandlers } from './transport';
 
 /**
  * One Bappa, many people.
@@ -63,6 +64,8 @@ interface CollectiveStore {
   /** Offerings seen but not yet shown, oldest first. */
   queue: OfferingEvent[];
   presentedCount: number;
+  /** Highest sequence this browser has accounted for. */
+  seen: number;
 
   init: () => void;
   stop: () => void;
@@ -76,8 +79,9 @@ interface CollectiveStore {
 /** Offerings this browser submitted, so they are not shown twice. */
 const own = new Set<string>();
 
-let stream: EventSource | null = null;
-let retry: ReturnType<typeof setTimeout> | null = null;
+let transport: Transport | null = null;
+/** Keeps the day (and so the formation) honest across a long visit. */
+let resyncTimer: ReturnType<typeof setInterval> | null = null;
 
 export const useCollective = create<CollectiveStore>((set, get) => ({
   snapshot: null,
@@ -88,17 +92,23 @@ export const useCollective = create<CollectiveStore>((set, get) => ({
 
   queue: [],
   presentedCount: 0,
+  seen: 0,
 
   init: () => {
-    if (stream) return;
-    connect(set, get);
+    if (transport) return;
+    transport = connect(handlers(set, get));
+
+    // The day turns without anyone leaving anything, and the day is half
+    // of how built he is. Rare and cheap: once every few minutes is far
+    // more often than a day boundary and far less often than polling.
+    resyncTimer ??= setInterval(() => void resync(set), 5 * 60 * 1000);
   },
 
   stop: () => {
-    stream?.close();
-    stream = null;
-    if (retry) clearTimeout(retry);
-    retry = null;
+    transport?.close();
+    transport = null;
+    if (resyncTimer) clearInterval(resyncTimer);
+    resyncTimer = null;
   },
 
   takeNext: () => {
@@ -146,66 +156,55 @@ function applySnapshot(set: Set, snapshot: BappaSnapshot) {
   // The countdown ticks locally between snapshots; this is what keeps it
   // ticking from the server's clock rather than from this device's.
   setServerTime(snapshot.now);
-  set({
+  set((s) => ({
     snapshot,
     count: snapshot.offeringsCount,
     build: snapshot.formationProgress,
     ready: true,
     connection: 'live',
-  });
+    // A snapshot already accounts for everything up to its own sequence,
+    // so nothing before it is replayed -- which is what lets someone
+    // arriving on day nine start from how built he is rather than from
+    // nine days of history.
+    seen: Math.max(s.seen, snapshot.seq),
+  }));
 }
 
-function connect(set: Set, get: Get) {
-  // The cursor rides on the connection so a reconnect resumes rather than
-  // replays; EventSource sends it back as Last-Event-ID by itself, and the
-  // query parameter covers the first connection.
-  const since = get().snapshot?.seq ?? 0;
-  const source = new EventSource(`/api/stream?since=${since}`);
-  stream = source;
-
-  source.addEventListener('snapshot', (e) => {
-    const snapshot = parse<BappaSnapshot>((e as MessageEvent).data);
-    if (!snapshot) return;
-    applySnapshot(set, snapshot);
-  });
-
-  source.addEventListener('collective', (e) => {
-    const event = parse<CollectiveEvent>((e as MessageEvent).data);
-    if (!event) return;
-    handle(set, get, event);
-  });
-
-  source.onopen = () => set({ connection: 'live' });
-
-  source.onerror = () => {
-    // EventSource reconnects by itself, but only while the response was a
-    // stream. A hard failure needs its own retry, and either way the
-    // scene must not change: he simply stops receiving news for a moment.
-    set({ connection: get().ready ? 'offline' : 'connecting' });
-    if (source.readyState === EventSource.CLOSED) {
-      stream = null;
-      if (retry) clearTimeout(retry);
-      // On the way back, take a fresh snapshot rather than continuing from
-      // a local state that may be minutes stale.
-      retry = setTimeout(() => void resync(set, get), 4000);
-    }
+function handlers(set: Set, get: Get): TransportHandlers {
+  return {
+    onSnapshot: (s) => applySnapshot(set, s),
+    onEvent: (e) => handle(set, get, e),
+    onStatus: (s) => set({ connection: s === 'offline' && !get().ready ? 'connecting' : s }),
+    // Where this browser has got to. Everything already presented or
+    // queued counts, so a reconnect resumes rather than repeats.
+    cursor: () => {
+      const s = get();
+      const queued = s.queue.length ? s.queue[s.queue.length - 1].seq : 0;
+      return Math.max(s.seen, queued);
+    },
+    snapshot: () => get().snapshot,
   };
 }
 
-async function resync(set: Set, get: Get) {
+async function resync(set: Set) {
   try {
     const r = await fetch('/api/offerings', { cache: 'no-store' });
     if (r.ok) applySnapshot(set, (await r.json()) as BappaSnapshot);
   } catch {
-    set({ connection: 'offline' });
+    // A missed resync is not worth showing anyone. The next one, or the
+    // next offering, puts it right.
   }
-  if (!stream) connect(set, get);
 }
 
 function handle(set: Set, get: Get, event: CollectiveEvent) {
   switch (event.kind) {
     case 'OFFERING_RECEIVED': {
       const { offering } = event;
+
+      // Already accounted for. A reconnect that overlaps, or a row
+      // delivered twice, must not show the same offering twice.
+      if (offering.seq <= get().seen) return;
+      set({ seen: offering.seq });
       // The tally is the server's, and it moves the moment we hear about
       // it -- even though the offering itself may not be shown for a
       // while yet. State and presentation are not the same clock.
@@ -234,7 +233,7 @@ function handle(set: Set, get: Get, event: CollectiveEvent) {
     case 'VISARJAN_COMPLETE':
       // The scene's own festival clock drives the dissolve; this is here
       // so the lifecycle is on the wire for when it stops being local.
-      void resync(set, get);
+      void resync(set);
       return;
   }
 }
@@ -304,12 +303,4 @@ function newId(): string {
   const c = globalThis.crypto;
   if (c?.randomUUID) return c.randomUUID().replace(/-/g, '');
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
-}
-
-function parse<T>(raw: string): T | null {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
 }

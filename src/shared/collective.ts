@@ -81,6 +81,15 @@ export interface BappaSnapshot {
   endsAt: number;
   /** False when no shared store is configured (development). */
   shared: boolean;
+
+  /**
+   * The curve's own inputs, so a client resolving a realtime row to a
+   * formation gets exactly the number the server would have got. Sent
+   * rather than compiled in: a client and a server disagreeing about the
+   * target is a client and a server disagreeing about Bappa.
+   */
+  offeringTarget: number;
+  festivalDays: number;
 }
 
 /* ------------------------------------------------------------------ */
