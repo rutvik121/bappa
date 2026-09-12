@@ -15,6 +15,7 @@ import {
 import { FAREWELL_LINES, FAREWELL_OUT_MS } from './farewell';
 import { OFFERINGS, OfferingMark, offeringFor } from './offerings';
 import { Masthead } from './Masthead';
+import { ShareCard } from './ShareCard';
 
 /**
  * The entire interface.
@@ -67,6 +68,13 @@ export function Overlay({ ready }: { ready: boolean }) {
    * Unmounted rather than faded, so it is a certainty and not an animation.
    */
   const [uiGone, setUiGone] = useState(false);
+  /**
+   * Whether they have been offered something to keep. Set a few seconds
+   * into the closing line so it never lands on top of the moment, and
+   * deliberately not cleared when he settles: it waits quietly until they
+   * leave, rather than being snatched away on a timer.
+   */
+  const [keepOffered, setKeepOffered] = useState(false);
 
   const [step, setStep] = useState<Step>('choose');
   const [sound, setSound] = useState<SoundStatus>('off');
@@ -210,6 +218,18 @@ export function Overlay({ ready }: { ready: boolean }) {
       if (useScene.getState().draft) setDraft('');
     }
   }, [state, setDraft]);
+
+  // The line lands, and is left alone. Only after it has been sitting
+  // there a while is anything else offered.
+  useEffect(() => {
+    if (state === 'COMPLETE') {
+      const t = setTimeout(() => setKeepOffered(true), 5200);
+      return () => clearTimeout(t);
+    }
+    // Gone the moment he starts to leave, like everything else.
+    if (state === 'VISARJAN' || state === 'CONTRIBUTING') setKeepOffered(false);
+    return undefined;
+  }, [state]);
 
   // A beat before focus, so the keyboard does not race the push-in.
   useEffect(() => {
@@ -426,6 +446,15 @@ export function Overlay({ ready }: { ready: boolean }) {
                 {offeringFor(type).closing}
               </p>
             )}
+          </div>
+
+          {/* Something to keep, offered late and quietly. The line has to
+              land first and be allowed to sit there -- an invitation to
+              share arriving on top of it would make the moment a prompt.
+              It outlives the closing state on purpose: once he is still
+              again it is still there, until they go. */}
+          <div className={`layer layer--keep ${keepOffered ? 'in' : ''}`}>
+            <ShareCard type={type} count={count} />
           </div>
         </>
       )}
