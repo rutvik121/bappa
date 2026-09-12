@@ -44,7 +44,36 @@ export interface TransportHandlers {
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const usingRealtime = Boolean(SUPABASE_URL && SUPABASE_ANON);
+/**
+ * Keys are base64url and dots, and nothing else.
+ *
+ * A key copied out of the dashboard while it was still masked arrives
+ * full of bullet characters, and the only symptom is an opaque websocket
+ * handshake failure with the key -- percent-encoded into unreadability --
+ * buried in the URL. Caught here so it says what is actually wrong.
+ */
+const wellFormedKey = (k: string | undefined): boolean =>
+  Boolean(k) &&
+  /^[A-Za-z0-9._-]+$/.test(k!) &&
+  // Either shape Supabase issues: the legacy anon JWT, or a publishable
+  // key. The charset above is what actually catches a masked paste.
+  (k!.split('.').length === 3 || k!.startsWith('sb_publishable_'));
+
+export const usingRealtime = Boolean(SUPABASE_URL) && wellFormedKey(SUPABASE_ANON);
+
+if (
+  process.env.NODE_ENV !== 'production' &&
+  SUPABASE_URL &&
+  SUPABASE_ANON &&
+  !wellFormedKey(SUPABASE_ANON)
+) {
+  console.error(
+    '[bappa] NEXT_PUBLIC_SUPABASE_ANON_KEY is not a valid key. It usually means ' +
+      'it was copied from the dashboard while still masked, so it contains bullet ' +
+      'characters instead of the key. Reveal it first, then copy. Falling back to ' +
+      'the event stream in the meantime.'
+  );
+}
 
 /** A row as the database publishes it. */
 interface Row {
