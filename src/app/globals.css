@@ -72,6 +72,14 @@ body {
   background: var(--ground);
 }
 
+/* The server-rendered words step aside the moment the live interface has
+   them. The opaque stage already covers them, so this changes nothing on
+   screen -- but without it the premise stays in the document twice, and a
+   screen reader reads the same heading through a second time. */
+html[data-live] .prelude {
+  display: none;
+}
+
 canvas {
   display: block;
   outline: none;
@@ -269,12 +277,53 @@ button {
 /* ORIENTATION                                                       */
 /* ---------------------------------------------------------------- */
 
+/**
+ * The hero composition.
+ *
+ * He is the centre of the room and these are the two pieces of
+ * information standing around him. The frame is the viewport itself --
+ * he is placed in the middle of it by the camera, not in the middle of
+ * whatever is left once the words have been laid out.
+ *
+ * Phone: there is no room beside him, so the composition is vertical.
+ * The camera lifts him into the upper frame and the words stack beneath,
+ * in the order they are needed: what this is, then the way in, then the
+ * clock.
+ */
+.hero {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: clamp(12px, 2.4vh, 22px);
+  padding: 0 var(--gutter) calc(var(--safe-bottom) + clamp(16px, 3.6vh, 40px));
+  pointer-events: none;
+}
+
+/* Inside the hero the two blocks are in flow, so they stack without
+   either one needing to know how tall the other is. */
+.hero .layer--masthead,
+.hero .layer--foot {
+  position: static;
+  padding: 0;
+}
+
 .layer--masthead {
-  top: calc(var(--safe-top) + clamp(22px, 5vh, 56px));
-  left: 0;
-  right: 0;
-  padding: 0 var(--gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+}
+
+/* The way in comes before the clock on a phone: the offering is the
+   point, and the countdown is the context for it. */
+.hero .layer--foot .rite {
+  order: -1;
+}
+
+.hero .layer--foot .fallback {
+  order: -2;
 }
 
 .headline {
@@ -306,10 +355,6 @@ button {
 }
 
 .layer--foot {
-  bottom: calc(var(--safe-bottom) + clamp(18px, 4vh, 44px));
-  left: 0;
-  right: 0;
-  padding: 0 var(--gutter);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -495,22 +540,28 @@ button {
 /* ---------------------------------------------------------------- */
 
 /* On a phone the writing sits high, where the keyboard cannot cover it. */
+/* Centred by its own margins rather than by a translate, so the only
+   transform on it is the entrance -- which lets it be moved off the
+   centre line on a wide screen without the two fighting. */
 .layer--write {
-  left: 50%;
+  left: var(--gutter);
+  right: var(--gutter);
   top: calc(var(--safe-top) + clamp(18px, 7vh, 64px));
-  width: min(560px, calc(100vw - var(--gutter) * 2));
-  transform: translate(-50%, 6px);
+  width: auto;
+  max-width: 560px;
+  margin-inline: auto;
+  transform: translateY(6px);
 }
 
 .layer--write.in {
-  transform: translate(-50%, 0);
+  transform: none;
 }
 
 /* On the way out, the written words hand off to the particles that have
    taken their shape: they leave faster and do not drift, so they appear
    consumed in place rather than sliding away. */
 .layer--write:not(.in) {
-  transform: translate(-50%, 0);
+  transform: none;
   transition:
     opacity 900ms ease-out,
     visibility 0s linear 900ms;
@@ -783,6 +834,109 @@ button {
   }
 }
 
+/* ---------------------------------------------------------------- */
+/* The wide composition                                              */
+/* ---------------------------------------------------------------- */
+
+/**
+ * Room enough to stand either side of him. He holds the middle of the
+ * viewport and the words move out to the edges, deliberately unevenly:
+ * the invitation on the left is the emotional half and carries the
+ * headline, the right is the clock and the way in. Neither column comes
+ * anywhere near his silhouette -- he is about a third of the frame wide,
+ * centred, so the columns sit in empty darkness.
+ *
+ * Must agree with `portrait` in CameraController, which stops lifting him
+ * up the frame at exactly this point.
+ */
+@media (min-width: 1000px) and (min-aspect-ratio: 6/5) {
+  .hero {
+    flex-direction: row;
+    /* Stretched, so each column places itself on its own vertical line
+       rather than both being centred on his. */
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 3vw;
+    padding: 0 max(var(--gutter), 3.4vw);
+  }
+
+  /* LEFT -- the invitation, riding above the centre line. */
+  .hero .layer--masthead {
+    width: min(30vw, 420px);
+    justify-content: center;
+    align-items: flex-start;
+    text-align: left;
+    padding-bottom: 12vh;
+  }
+
+  /* RIGHT -- the clock and the way in, set well below it. The two
+     columns are deliberately off each other's line: level, they read as
+     a caption either side of a product shot. */
+  .hero .layer--foot {
+    width: min(24vw, 310px);
+    justify-content: center;
+    align-items: flex-end;
+    text-align: right;
+    gap: 20px;
+    padding-top: 24vh;
+  }
+
+  .hero .layer--foot .time {
+    align-items: flex-end;
+  }
+
+  /* Down the right the natural order already reads correctly: when it
+     is, how long is left, the way in, and how many have been before. */
+  .hero .layer--foot .rite {
+    order: 0;
+  }
+
+  .headline {
+    font-size: clamp(46px, 4.6vw, 64px);
+  }
+
+  /* Nothing is printed over him any more, so the darkness that made the
+     words readable is no longer doing anything but flattening the room. */
+  .overlay[data-scene='idle'] .scrim--top,
+  .overlay[data-scene='idle'] .scrim--bottom {
+    opacity: 0;
+  }
+}
+
+/**
+ * Writing, beside him rather than across him.
+ *
+ * Centred, the panel was printed straight over his lap -- the one thing
+ * this composition must never do -- so it moves into the same empty
+ * darkness the invitation stands in.
+ *
+ * Gated harder than the hero is. How wide he falls across the frame
+ * depends on the aspect ratio, and on a squarer window there is not
+ * enough clear darkness beside him to write in: below this, the panel
+ * stays centred over him and keeps its scrim, exactly as it did before.
+ */
+@media (min-width: 1180px) and (min-aspect-ratio: 7/5) {
+  .layer--write {
+    left: max(var(--gutter), 3vw);
+    right: auto;
+    top: 0;
+    bottom: 0;
+    width: min(24vw, 340px);
+    max-width: none;
+    margin-inline: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  /* Nothing is over him now, so the darkness that was laid on him to
+     keep the words readable has nothing left to do. */
+  .overlay[data-scene='write'] .scrim--top,
+  .overlay[data-scene='write'] .scrim--bottom {
+    opacity: 0;
+  }
+}
+
 /* Short landscape phones: keep the stack clear of the sculpture. */
 @media (max-height: 520px) {
   .headline {
@@ -814,7 +968,7 @@ button {
   .layer--write,
   .layer--write.in,
   .layer--write:not(.in) {
-    transform: translate(-50%, 0);
+    transform: none;
   }
 
   .closing-line {

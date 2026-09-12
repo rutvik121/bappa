@@ -259,6 +259,12 @@ export function Overlay({ ready }: { ready: boolean }) {
           </p>
 
           {/* ---------------- ORIENTATION ---------------- */}
+          {/* He is the centre of the room. These two blocks are the
+              information standing around him -- the invitation on one
+              side, the clock and the way in on the other -- and the
+              composition is the viewport itself, not the space left
+              over once they have been placed. */}
+          <div className="hero">
           <header className={`layer layer--masthead ${scene === 'idle' ? 'in' : ''}`}>
             <Masthead />
           </header>
@@ -307,6 +313,7 @@ export function Overlay({ ready }: { ready: boolean }) {
                 )}
               </>
             )}
+          </div>
           </div>
 
           {/* ---------------- CHOICE ---------------- */}
