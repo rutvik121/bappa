@@ -1,7 +1,8 @@
 -- BAPPA 2026 -- the collective, in Postgres.
 --
--- Run this once in the Supabase SQL editor. It is written to be safe to
--- run again: every object is created only if it is missing.
+-- Applied with `supabase db push`, or by pasting it into the SQL editor.
+-- Either way it is safe to run again: every object is created only if it
+-- is missing, so re-running it is a no-op rather than a reset.
 --
 -- Two ideas do all the work here.
 --
@@ -192,10 +193,23 @@ create policy "tally is public"
 -- No policy on rate_limits at all: with RLS on and nothing granted, it
 -- is invisible to the public key and reachable only by the service role.
 
--- The functions run as their owner, so revoke them from the public key
--- and leave them to the server.
-revoke all on function public.leave_offering(text, text, real, bigint) from anon, authenticated;
-revoke all on function public.bump_rate(text, integer) from anon, authenticated;
+-- These two run as their owner and so bypass every policy above. Left
+-- reachable they would be a way for anyone holding the public key to
+-- write to the collective through PostgREST -- no server, no rate limit,
+-- and no closed window on the last day.
+--
+-- FROM PUBLIC is the part that matters, and is easy to get wrong:
+-- Postgres grants EXECUTE on a new function to PUBLIC, and anon inherits
+-- it. Revoking from anon and authenticated alone leaves that grant in
+-- place and the door open. Tested, because reading it is not enough.
+revoke all on function public.leave_offering(text, text, real, bigint)
+  from public, anon, authenticated;
+revoke all on function public.bump_rate(text, integer)
+  from public, anon, authenticated;
+
+-- Which leaves the server, which is the point.
+grant execute on function public.leave_offering(text, text, real, bigint) to service_role;
+grant execute on function public.bump_rate(text, integer) to service_role;
 
 -- ------------------------------------------------------------------
 -- Realtime
