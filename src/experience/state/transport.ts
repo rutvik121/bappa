@@ -101,11 +101,44 @@ async function snapshotNow(): Promise<BappaSnapshot | null> {
 /* Supabase realtime                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * How long the socket is given to say it is listening before the stream
+ * is opened instead. Generous: a slow phone on a bad connection should
+ * not be given up on early, but nobody should sit in front of a Bappa
+ * that has quietly stopped hearing anything either.
+ */
+const SUBSCRIBE_GRACE_MS = 8000;
+
 function realtimeTransport(h: TransportHandlers): Transport {
   let closed = false;
   let cleanup: (() => void) | null = null;
-  /** Stands in if the realtime client cannot be loaded at all. */
+  /** Stands in when the socket cannot be loaded, opened, or kept. */
   let fallback: Transport | null = null;
+
+  /**
+   * Anything that means "this browser is not going to hear about
+   * offerings over the socket" ends up here.
+   *
+   * Realtime is the better transport, not the only one. If it does not
+   * come up -- the project has it switched off, a proxy eats websockets,
+   * the subscription errors or simply never lands -- the stream still
+   * works, because it is the page's own origin over ordinary HTTP.
+   * Without this the client reported itself offline and then did nothing
+   * at all, which looks exactly like the collective being broken: the
+   * tally only moved when the visitor happened to reload.
+   */
+  const giveUpOnSocket = () => {
+    if (closed || fallback) return;
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[bappa] realtime did not come up; falling back to the event stream');
+    }
+    h.onStatus('offline');
+    cleanup?.();
+    cleanup = null;
+    fallback = streamTransport(h);
+  };
+
+  const grace = setTimeout(giveUpOnSocket, SUBSCRIBE_GRACE_MS);
 
   void (async () => {
    try {
@@ -151,11 +184,16 @@ function realtimeTransport(h: TransportHandlers): Transport {
         (payload) => h.onEvent(rowToEvent(payload.new as Row, h.snapshot()))
       )
       .subscribe((status) => {
+        if (closed || fallback) return;
         if (status === 'SUBSCRIBED') {
+          clearTimeout(grace);
           h.onStatus('live');
           void catchUp();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          h.onStatus('offline');
+          // Not just a status to report: with nothing behind it this was
+          // the end of the browser hearing anything.
+          clearTimeout(grace);
+          giveUpOnSocket();
         }
       });
 
@@ -165,19 +203,16 @@ function realtimeTransport(h: TransportHandlers): Transport {
    } catch {
     // The realtime client never arrived -- a chunk that failed to fetch,
     // a tab left open across a deploy, a network that dropped at exactly
-    // the wrong moment. Without this the promise simply rejected and this
-    // browser was left with no transport at all: no realtime, no
-    // fallback, and nothing said. He has to stay watchable, so it falls
-    // back to the stream, which needs nothing but the page's own origin.
-    if (closed) return;
-    h.onStatus('offline');
-    fallback = streamTransport(h);
+    // the wrong moment.
+    clearTimeout(grace);
+    giveUpOnSocket();
    }
   })();
 
   return {
     close() {
       closed = true;
+      clearTimeout(grace);
       cleanup?.();
       fallback?.close();
     },
@@ -245,6 +280,17 @@ function streamTransport(h: TransportHandlers): Transport {
 /* ------------------------------------------------------------------ */
 
 export function connect(h: TransportHandlers): Transport {
+  // Which way this browser is listening is the first thing worth knowing
+  // when he stops appearing to hear anything, and it is otherwise
+  // invisible. Development only.
+  if (process.env.NODE_ENV !== 'production') {
+    console.info(
+      usingRealtime
+        ? '[bappa] listening over supabase realtime'
+        : '[bappa] listening over the event stream ' +
+            '(NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are not set)'
+    );
+  }
   return usingRealtime ? realtimeTransport(h) : streamTransport(h);
 }
 
