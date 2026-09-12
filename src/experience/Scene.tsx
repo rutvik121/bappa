@@ -35,10 +35,12 @@ export function Scene({ perf, devStats = false }: { perf: PerfProfile; devStats?
   // points at most, which is a single frame's hitch during the loader.
   const onGeometry = useCallback(
     (geo: THREE.BufferGeometry, matrix: THREE.Matrix4) => {
-      const { points } = buildSurfaceSamples(geo, matrix, perf.surfaceTargets);
+      const { points, weights } = buildSurfaceSamples(geo, matrix, perf.surfaceTargets);
       // The same points an arriving offering sinks into, so it joins the
-      // sculpture itself rather than fading somewhere near it.
-      setSurfaceTargets(points);
+      // sculpture itself rather than fading somewhere near it -- and the
+      // weights, so it can pick the part of him that is still being made
+      // rather than any part at all.
+      setSurfaceTargets(points, weights);
     },
     [perf.surfaceTargets]
   );

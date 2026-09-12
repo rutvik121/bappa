@@ -269,6 +269,22 @@ export function Overlay({ ready }: { ready: boolean }) {
             <Masthead />
           </header>
 
+          {/* The one control that belongs in the middle. It opens the
+              ritual, and the ritual happens in the centre -- so it stands
+              under him rather than out at an edge with the information. */}
+          {!failed && (
+            <div className={`layer layer--enter ${scene === 'idle' ? 'in' : ''}`}>
+              <button
+                className={`rite ${arrived ? '' : 'is-waiting'}`}
+                onClick={begin}
+                tabIndex={arrived ? 0 : -1}
+                aria-hidden={!arrived}
+              >
+                Make an offering
+              </button>
+            </div>
+          )}
+
           <div className={`layer layer--foot ${scene === 'idle' ? 'in' : ''}`}>
             {failed === 'webgl' && (
               <p className="fallback">
@@ -295,15 +311,6 @@ export function Overlay({ ready }: { ready: boolean }) {
                   {time.count && <span className="time-count">{time.count}</span>}
                   <span className="time-phase">{time.phase}</span>
                 </p>
-
-                <button
-                  className={`rite ${arrived ? '' : 'is-waiting'}`}
-                  onClick={begin}
-                  tabIndex={arrived ? 0 : -1}
-                  aria-hidden={!arrived}
-                >
-                  Make an offering
-                </button>
 
                 {collectiveReady && count > 0 && (
                   <p className="tally">

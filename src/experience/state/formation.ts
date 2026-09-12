@@ -18,14 +18,20 @@ import { useCollective, TARGET_OFFERINGS } from './collective';
  */
 
 /**
- * Where he starts: already a murti.
+ * Where he starts: begun, not finished.
  *
- * Bappa is the hero of every frame, so even on the first morning he has to
- * read as terracotta -- a sculpture with unfinished passages still made of
- * loose material -- rather than as a cloud of particles in the shape of
- * one. Everything the days and the offerings add is built above this.
+ * Low on purpose. He is not a finished murti that offerings decorate --
+ * he is the thing the offerings are making, so on the first morning most
+ * of him is still loose material holding his shape, and only the base and
+ * the lower body have settled into clay. Everything the days and the
+ * offerings add is built above this.
+ *
+ * Not lower than this, though: the silhouette has to be unmistakably him
+ * from the first frame. Below roughly a quarter there is not enough
+ * settled clay to read as terracotta at all, and he becomes a cloud in
+ * the shape of a murti rather than a murti being made.
  */
-const FLOOR = 0.7;
+const FLOOR = 0.3;
 
 /** Weights for the accelerated term. */
 const DAY_WEIGHT = 0.35;

@@ -304,6 +304,7 @@ button {
 /* Inside the hero the two blocks are in flow, so they stack without
    either one needing to know how tall the other is. */
 .hero .layer--masthead,
+.hero .layer--enter,
 .hero .layer--foot {
   position: static;
   padding: 0;
@@ -316,14 +317,11 @@ button {
   text-align: center;
 }
 
-/* The way in comes before the clock on a phone: the offering is the
-   point, and the countdown is the context for it. */
-.hero .layer--foot .rite {
-  order: -1;
-}
-
-.hero .layer--foot .fallback {
-  order: -2;
+/* The way into the ritual, under him: the centre is the stage, so the
+   control that opens it stands there and not out at an edge. */
+.layer--enter {
+  display: flex;
+  justify-content: center;
 }
 
 .headline {
@@ -891,6 +889,16 @@ button {
     order: 0;
   }
 
+  /* Out of the row and onto the centre line of the viewport itself, so
+     the way in is under him rather than between two columns of unequal
+     width. */
+  .hero .layer--enter {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: clamp(40px, 8vh, 92px);
+  }
+
   .headline {
     font-size: clamp(46px, 4.6vw, 64px);
   }
@@ -899,40 +907,6 @@ button {
      words readable is no longer doing anything but flattening the room. */
   .overlay[data-scene='idle'] .scrim--top,
   .overlay[data-scene='idle'] .scrim--bottom {
-    opacity: 0;
-  }
-}
-
-/**
- * Writing, beside him rather than across him.
- *
- * Centred, the panel was printed straight over his lap -- the one thing
- * this composition must never do -- so it moves into the same empty
- * darkness the invitation stands in.
- *
- * Gated harder than the hero is. How wide he falls across the frame
- * depends on the aspect ratio, and on a squarer window there is not
- * enough clear darkness beside him to write in: below this, the panel
- * stays centred over him and keeps its scrim, exactly as it did before.
- */
-@media (min-width: 1180px) and (min-aspect-ratio: 7/5) {
-  .layer--write {
-    left: max(var(--gutter), 3vw);
-    right: auto;
-    top: 0;
-    bottom: 0;
-    width: min(24vw, 340px);
-    max-width: none;
-    margin-inline: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-
-  /* Nothing is over him now, so the darkness that was laid on him to
-     keep the words readable has nothing left to do. */
-  .overlay[data-scene='write'] .scrim--top,
-  .overlay[data-scene='write'] .scrim--bottom {
     opacity: 0;
   }
 }

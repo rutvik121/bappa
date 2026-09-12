@@ -140,8 +140,16 @@ export function CameraController() {
     // The wide lift is the optical-centre correction, not a composition:
     // a form this heavy at the base reads as sitting low when its
     // geometric centre is on the centre line, so it goes up a hair.
+    //
+    // While the offering is being chosen and written he rises further, so
+    // the words sit under him and the visitor is writing to him rather
+    // than over him. On a phone it is the other way round: the keyboard
+    // owns the lower half, so the writing has to be at the top and he
+    // settles down out of its way instead.
     const portrait = aspect < 1.2 || size.width < 1000;
-    const liftTarget = state === 'VISARJAN' ? 0 : portrait ? 0.15 : 0.03;
+    const ritual = state === 'CONTRIBUTING';
+    const liftTarget =
+      state === 'VISARJAN' ? 0 : portrait ? (ritual ? 0 : 0.15) : ritual ? 0.1 : 0.03;
     lift.current = first.current ? liftTarget : lift.current + (liftTarget - lift.current) * k;
     first.current = false;
     if (Math.abs(lift.current) > 0.0005) {
