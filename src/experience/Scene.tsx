@@ -18,6 +18,7 @@ import {
 } from './components/DissolveController';
 import { setSurfaceTargets } from './systems/ParticleSystem';
 import { ContributionController } from './components/ContributionController';
+import { CollectivePresenter } from './components/CollectivePresenter';
 import { SoundBridge } from './audio/SoundBridge';
 import { DevStats } from './dev/DevStats';
 import type { PerfProfile } from './systems/perf';
@@ -35,10 +36,12 @@ export function Scene({ perf, devStats = false }: { perf: PerfProfile; devStats?
   // points at most, which is a single frame's hitch during the loader.
   const onGeometry = useCallback(
     (geo: THREE.BufferGeometry, matrix: THREE.Matrix4) => {
-      const { points } = buildSurfaceSamples(geo, matrix, perf.surfaceTargets);
+      const { points, weights } = buildSurfaceSamples(geo, matrix, perf.surfaceTargets);
       // The same points an arriving offering sinks into, so it joins the
-      // sculpture itself rather than fading somewhere near it.
-      setSurfaceTargets(points);
+      // sculpture itself rather than fading somewhere near it -- and the
+      // weights, so it can pick the part of him that is still being made
+      // rather than any part at all.
+      setSurfaceTargets(points, weights);
     },
     [perf.surfaceTargets]
   );
@@ -70,6 +73,8 @@ export function Scene({ perf, devStats = false }: { perf: PerfProfile; devStats?
       {devStats && <DevStats perf={perf} particles={particles} />}
 
       <ContributionController perf={perf} particles={particles} />
+      {/* What everyone else leaves with him, one at a time. */}
+      <CollectivePresenter perf={perf} particles={particles} />
       <DissolveController ganpati={ganpati} />
       {/* Last, so it hears this frame's simulation and dissolve. */}
       <SoundBridge particles={particles} ganpati={ganpati} />

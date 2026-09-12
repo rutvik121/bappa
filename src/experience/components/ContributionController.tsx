@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene } from '../state/sceneState';
-import { useCollective } from '../state/collective';
+import { submitOffering } from '../state/collective';
 import { devTimeScale } from '../dev/devtools';
 import { sampleTextPoints } from '../systems/TextSampler';
 import { BAPPA_CENTER } from './GanpatiModel';
@@ -182,11 +182,12 @@ export function ContributionController({ perf, particles }: Props) {
             system.spawnFormation(anchors, type, seed, weight, FORM_HOLD);
           }
 
-          // One more offering in the tally. This is the only thing that
-          // makes Bappa more built -- and the only thing that leaves this
-          // browser, if a shared source is configured. A number, nothing
-          // else: no text, no type, no identity.
-          void useCollective.getState().record();
+          // It goes to the collective now: the server decides whether an
+          // offering happened, and every other window watching him hears
+          // about it from there rather than from us. A type, how much
+          // material it carries, and the seed that shapes the burst --
+          // never the words, which were sampled above and wiped with them.
+          void submitOffering(type, weight, seed);
         }
 
         if (elapsed >= DURATION.UNDERSTANDING) {

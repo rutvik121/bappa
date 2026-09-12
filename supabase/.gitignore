@@ -1,0 +1,4 @@
+# Written by the CLI when you link a project. Machine-local, and it
+# contains your project ref -- it does not belong in the repository.
+.branches
+.temp

@@ -10,7 +10,7 @@ import { currentFormation } from '../state/formation';
 import { bakeVertexWeights } from '../systems/SurfaceSampler';
 import { createFormationCloud, type FormationCloud } from '../systems/FormationCloud';
 import type { PerfProfile } from '../systems/perf';
-import { ParticleSystem } from '../systems/ParticleSystem';
+import { ParticleSystem, setFormationLevel } from '../systems/ParticleSystem';
 import type { ParticleHandle } from './ParticleField';
 
 export const GANPATI_URL = '/models/ganpati.glb';
@@ -66,12 +66,24 @@ const grainFn = /* glsl */ `
 `;
 
 /**
- * Only Visarjan removes clay. What has not formed yet is still there, as
- * raw clay: cutting it away left black holes that every first-time visitor
- * read as a broken model. When he goes, he goes grain by grain rather
- * than along a clean cut.
+ * Where there is clay, and where there is not yet any.
+ *
+ * Above the frontier he has not been made: there is no surface there, and
+ * what stands in its place is the material still gathering, drawn by the
+ * formation cloud. This is the whole concept in four lines -- an offering
+ * brings material, the material settles, and the clay under it begins to
+ * exist. Painting the unmade passages as duller clay instead (which is
+ * what this did before) meant a finished sculpture was always sitting
+ * there and the offerings could only ever look like decoration on it.
+ *
+ * The grain is what keeps it from cutting: the frontier crumbles over a
+ * few millimetres of his surface, so clay climbs in tongues and grains
+ * rather than along a line. Visarjan runs the same axis backwards.
  */
 const carveChunk = /* glsl */ `
+  float ahead = vFormWeight - uFormation;
+  if (ahead > 0.0 && bappaGrain(vLocalPos) < clamp(ahead / 0.05, 0.0, 1.0)) discard;
+
   if (uDissolve > 0.0001) {
     float behind = vFormWeight - (1.0 - uDissolve);
     if (behind > 0.0 && bappaGrain(vLocalPos) > 1.0 - clamp(behind / 0.07, 0.0, 1.0)) discard;
@@ -199,20 +211,16 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
             `#include <dithering_fragment>
              ${carveChunk}
 
-             // --- what is still being made ---
-             // Unfinished passages are raw clay: greyer, drier, darker and
-             // granular, the way a murti looks in the workshop before it is
-             // smoothed. Never a hole. Where raw meets finished, the seam is
-             // a little darker, like clay that has just been pressed on.
-             float ahead = vFormWeight - uFormation;
-             float raw = smoothstep(0.0, 0.06, ahead);
+             // --- clay that has only just arrived ---
+             // Material that has just settled is still damp: darker and
+             // grainier than cured clay, drying back over the last few
+             // percent behind the frontier. It is the only mark the
+             // frontier leaves on him, because above it there is no
+             // surface to mark -- and it is what makes the edge read as
+             // clay being added rather than as a cut.
+             float justSet = 1.0 - smoothstep(0.0, 0.055, uFormation - vFormWeight);
              float speck = bappaGrain(vLocalPos) - 0.5;
-             float luma = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114));
-             vec3 rawClay = mix(gl_FragColor.rgb, vec3(luma) * vec3(1.0, 0.92, 0.84), 0.5)
-               * (0.68 + speck * 0.32);
-             gl_FragColor.rgb = mix(gl_FragColor.rgb, rawClay, raw);
-             float seam = smoothstep(-0.03, 0.0, ahead) * (1.0 - smoothstep(0.0, 0.03, ahead));
-             gl_FragColor.rgb *= 1.0 - seam * 0.14;
+             gl_FragColor.rgb *= 1.0 - justSet * (0.24 - speck * 0.14);
 
              // --- an offering arriving ---
              // The clay catches the light where it was touched: a small,
@@ -380,6 +388,9 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
       formation.current += (target - formation.current) * Math.min(1, dt * 0.5);
     }
     uniforms.current.uFormation.value = formation.current;
+    // Offerings aim at the frontier, so the particle system needs to know
+    // where it currently is -- from here, where it is already eased.
+    setFormationLevel(formation.current);
 
 
     if (!group.current) return;

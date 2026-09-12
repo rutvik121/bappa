@@ -32,24 +32,32 @@ interface Shot {
 }
 
 /**
- * Bappa is 2.3 units tall and centred at y = 0.95. At a 34 degree fov the
- * visible height at distance d is 0.611*d, so from 6.0 he fills a little
- * under two thirds of a landscape frame -- dominant, with dark bands above
- * and below. Looking at 1.06 rather than his centre lowers him slightly,
- * which is where the larger band (the headline) needs the room.
+ * Bappa is 2.3 units tall, standing from y = -0.2 to y = 2.1, so his
+ * centre is y = 0.95. Every shot looks at that centre from very close to
+ * its own height: a level eye-line on the middle of the sculpture, which
+ * is how you meet something standing in a room rather than how a product
+ * is photographed.
+ *
+ * At a 34 degree fov the visible height at distance d is 0.611*d. From
+ * 6.27 that is 3.83 units, so he fills a little under two thirds of the
+ * frame and a fifth of it is left empty above and below him. He is the
+ * largest thing in the frame by a long way and still has air.
  */
 const SHOTS: Record<SceneStateName, Shot> = {
-  IDLE: { pos: new THREE.Vector3(0, 1.2, 6.0), look: new THREE.Vector3(0, 1.06, 0), fov: 34, ease: 6, fit: 1 },
-  // Closer while choosing and writing, still clear of the words below.
-  CONTRIBUTING: { pos: new THREE.Vector3(0, 1.12, 4.5), look: new THREE.Vector3(0, 1.16, 0), fov: 32, ease: 9, fit: 0.82 },
+  IDLE: { pos: new THREE.Vector3(0, 1.0, 6.27), look: new THREE.Vector3(0, 0.95, 0), fov: 34, ease: 6, fit: 1 },
+  // Closer while choosing and writing -- the room draws in, but he stays
+  // where he is, in the middle of it. The push-in is deliberately gentle:
+  // any closer and he spreads into the darkness the writing stands in,
+  // and the words end up back across his lap.
+  CONTRIBUTING: { pos: new THREE.Vector3(0, 1.0, 6.0), look: new THREE.Vector3(0, 0.97, 0), fov: 33, ease: 9, fit: 0.94 },
   // Held. The breath after offering is a held camera.
-  UNDERSTANDING: { pos: new THREE.Vector3(0, 1.1, 4.3), look: new THREE.Vector3(0, 1.12, 0), fov: 32, ease: 11, fit: 0.82 },
+  UNDERSTANDING: { pos: new THREE.Vector3(0, 1.0, 5.85), look: new THREE.Vector3(0, 0.96, 0), fov: 33, ease: 11, fit: 0.94 },
   // Still held while it travels: a few centimetres of drift, no orbit.
-  TRANSFORMING: { pos: new THREE.Vector3(0.18, 1.12, 4.3), look: new THREE.Vector3(0, 1.1, 0), fov: 32, ease: 14, fit: 0.82 },
-  // Back out, leaving the lower band for the closing line.
-  COMPLETE: { pos: new THREE.Vector3(0, 1.22, 6.1), look: new THREE.Vector3(0, 1.02, 0), fov: 34, ease: 12, fit: 1 },
+  TRANSFORMING: { pos: new THREE.Vector3(0.14, 1.0, 5.85), look: new THREE.Vector3(0, 0.95, 0), fov: 33, ease: 14, fit: 0.94 },
+  // Back out, to the composition he was found in.
+  COMPLETE: { pos: new THREE.Vector3(0, 1.02, 6.4), look: new THREE.Vector3(0, 0.95, 0), fov: 34, ease: 12, fit: 1 },
   // The longest, slowest retreat in the piece.
-  VISARJAN: { pos: new THREE.Vector3(0, 1.35, 7.0), look: new THREE.Vector3(0, 1.12, 0), fov: 38, ease: 26, fit: 1 },
+  VISARJAN: { pos: new THREE.Vector3(0, 1.12, 7.2), look: new THREE.Vector3(0, 1.0, 0), fov: 38, ease: 26, fit: 1 },
 };
 
 /** His width with the outer hands, plus a little air. */
@@ -62,8 +70,8 @@ export function CameraController() {
   const target = useRef(new THREE.Vector3());
   const dir = useRef(new THREE.Vector3());
   const still = useRef(false);
-  /** Horizontal placement of him in the frame, as a share of its width. */
-  const offset = useRef(0);
+  /** How far he is raised in the frame, as a share of its height. */
+  const lift = useRef(0);
   const first = useRef(true);
 
   // Handheld drift is atmosphere, and atmosphere is optional.
@@ -89,15 +97,10 @@ export function CameraController() {
     // height: pull back until both outer hands are in, rather than
     // cropping him into orange fragments at the edges of a phone.
     const aspect = size.width / Math.max(1, size.height);
-    // Landscape: the words take the left of the frame and he stands right
-    // of centre, as large as the height allows. Stacking both down the
-    // middle put the headline straight across his face on every laptop.
-    // Must agree with the landscape media query in globals.css.
-    const wide = aspect > 1.15 && size.width >= 900;
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(shot.fov) / 2) * aspect;
     const needed = (FULL_WIDTH / 2 / tanHalf) * shot.fit;
     dir.current.copy(shot.pos).sub(shot.look);
-    const distance = Math.max(dir.current.length() * (wide ? 0.88 : 1), needed);
+    const distance = Math.max(dir.current.length(), needed);
     target.current.copy(shot.look).addScaledVector(dir.current.normalize(), distance);
 
     // A barely perceptible drift, so the frame is held by a person rather
@@ -127,15 +130,30 @@ export function CameraController() {
       cam.updateProjectionMatrix();
     }
 
-    // An off-axis frustum rather than a turned camera, so he is moved
-    // across the frame without being seen from an angle. He drifts back to
-    // the centre while he leaves, so the last words sit in the middle of
-    // the empty space he was in.
-    const offTarget = wide && state !== 'VISARJAN' ? 0.16 : 0;
-    offset.current = first.current ? offTarget : offset.current + (offTarget - offset.current) * k;
+    // Portrait is the one frame he cannot be centred in: there is no room
+    // beside him for a single word, so the composition becomes vertical
+    // and he takes the upper part of it with the words stacked beneath.
+    // An off-axis frustum rather than a tilted camera, so he is moved up
+    // the frame without being looked at from above. He settles back to the
+    // centre as he leaves, so the last words sit in the space he was in.
+    // Must agree with the portrait composition in globals.css.
+    // The wide lift is the optical-centre correction, not a composition:
+    // a form this heavy at the base reads as sitting low when its
+    // geometric centre is on the centre line, so it goes up a hair.
+    //
+    // While the offering is being chosen and written he rises further, so
+    // the words sit under him and the visitor is writing to him rather
+    // than over him. On a phone it is the other way round: the keyboard
+    // owns the lower half, so the writing has to be at the top and he
+    // settles down out of its way instead.
+    const portrait = aspect < 1.2 || size.width < 1000;
+    const ritual = state === 'CONTRIBUTING';
+    const liftTarget =
+      state === 'VISARJAN' ? 0 : portrait ? (ritual ? 0 : 0.15) : ritual ? 0.1 : 0.03;
+    lift.current = first.current ? liftTarget : lift.current + (liftTarget - lift.current) * k;
     first.current = false;
-    if (Math.abs(offset.current) > 0.0005) {
-      cam.setViewOffset(size.width, size.height, -offset.current * size.width, 0, size.width, size.height);
+    if (Math.abs(lift.current) > 0.0005) {
+      cam.setViewOffset(size.width, size.height, 0, lift.current * size.height, size.width, size.height);
     } else if (cam.view?.enabled) {
       cam.clearViewOffset();
     }

@@ -59,20 +59,32 @@ export function formBounds(geometry: THREE.BufferGeometry): FormBounds {
 /**
  * When each part of him arrives.
  *
- * He forms from the centre out: the face, the trunk and the body first,
- * the outer hands, the ears and the edges of the base last -- the way a
- * murti is finished, and so that no visitor on any day meets a Bappa whose
- * face is the part still missing. Visarjan walks the same order backwards,
- * so the extremities are the first to let go and the face the last.
+ * He is built the way a murti is actually built: from the base upward.
+ * The base and the lap settle first, then the torso, then the arms and
+ * the head, and the outermost passages of every level -- the outer hands,
+ * the tips of the ears, the crown -- last. Visarjan walks the same axis
+ * backwards, so the crown is the first thing to let go and the base the
+ * last thing standing.
  *
- * Noise keeps the unfinished passages irregular, like clay still being
- * worked, rather than a clean radial wipe.
+ * Height dominates deliberately. A murti under construction has a
+ * *frontier*: a level the material has reached, below which it is clay
+ * and above which it is still being brought. That is what makes an
+ * offering legible as having helped -- it goes somewhere specific and
+ * that place becomes solid. The earlier centre-out ordering spread the
+ * unfinished passages evenly over the whole body, which is what made it
+ * read as speckles on a finished sculpture instead.
+ *
+ * The noise is what keeps it from reading as a progress bar: the frontier
+ * is ragged and clay climbs in tongues, the way wet material actually
+ * builds up, never as a level line sweeping up him.
  */
 export function formationWeight(x: number, y: number, z: number, b: FormBounds): number {
-  const n = smoothNoise(x * 6.5, y * 6.5, z * 6.5);
   const heightNorm = (y - b.minY) * b.invHeight;
   const radial = Math.min(1, Math.hypot((x - b.cx) * b.invHalfX, (z - b.cz) * b.invHalfZ));
-  return Math.min(1, Math.max(0, n * 0.38 + radial * 0.5 + heightNorm * 0.12));
+  // Two octaves: the broad one breaks the frontier into tongues, the fine
+  // one gives its edge a grain so it crumbles rather than cuts.
+  const n = smoothNoise(x * 3.1, y * 2.2, z * 3.1) * 0.72 + smoothNoise(x * 9.4, y * 9.4, z * 9.4) * 0.28;
+  return Math.min(1, Math.max(0, heightNorm * 0.62 + radial * 0.17 + n * 0.21));
 }
 
 export interface SurfaceSamples {

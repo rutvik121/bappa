@@ -75,7 +75,11 @@ const vertexShader = /* glsl */ `
 
     // Loose dust that never became clay still has to go.
     // Dense enough to hold the surface: sparse specks read as absence.
-    float looseAlpha = loose * mix(0.55, 1.0, gather) * (1.0 - smoothstep(0.0, 0.35, uDissolve));
+    // Raised once he began genuinely incomplete: most of him is loose on
+    // the first morning rather than a few passages, so the same points
+    // are spread over more than twice the area and at the old weight the
+    // silhouette thinned to a haze instead of holding his shape.
+    float looseAlpha = loose * mix(0.82, 1.0, gather) * (1.0 - smoothstep(0.0, 0.35, uDissolve));
 
     // Released material: bright as it comes away, gone by the end of its
     // own short life.
@@ -128,7 +132,7 @@ const fragmentShader = /* glsl */ `
     vec3 col = mix(dust, clay, vGather);
     col = mix(col, light, smoothstep(0.35, 1.0, vRelease));
 
-    gl_FragColor = vec4(col, core * vAlpha * 0.62);
+    gl_FragColor = vec4(col, core * vAlpha * 0.74);
   }
 `;
 

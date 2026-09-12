@@ -259,9 +259,31 @@ export function Overlay({ ready }: { ready: boolean }) {
           </p>
 
           {/* ---------------- ORIENTATION ---------------- */}
+          {/* He is the centre of the room. These two blocks are the
+              information standing around him -- the invitation on one
+              side, the clock and the way in on the other -- and the
+              composition is the viewport itself, not the space left
+              over once they have been placed. */}
+          <div className="hero">
           <header className={`layer layer--masthead ${scene === 'idle' ? 'in' : ''}`}>
             <Masthead />
           </header>
+
+          {/* The one control that belongs in the middle. It opens the
+              ritual, and the ritual happens in the centre -- so it stands
+              under him rather than out at an edge with the information. */}
+          {!failed && (
+            <div className={`layer layer--enter ${scene === 'idle' ? 'in' : ''}`}>
+              <button
+                className={`rite ${arrived ? '' : 'is-waiting'}`}
+                onClick={begin}
+                tabIndex={arrived ? 0 : -1}
+                aria-hidden={!arrived}
+              >
+                Make an offering
+              </button>
+            </div>
+          )}
 
           <div className={`layer layer--foot ${scene === 'idle' ? 'in' : ''}`}>
             {failed === 'webgl' && (
@@ -290,15 +312,6 @@ export function Overlay({ ready }: { ready: boolean }) {
                   <span className="time-phase">{time.phase}</span>
                 </p>
 
-                <button
-                  className={`rite ${arrived ? '' : 'is-waiting'}`}
-                  onClick={begin}
-                  tabIndex={arrived ? 0 : -1}
-                  aria-hidden={!arrived}
-                >
-                  Make an offering
-                </button>
-
                 {collectiveReady && count > 0 && (
                   <p className="tally">
                     {count.toLocaleString('en-IN')}{' '}
@@ -307,6 +320,7 @@ export function Overlay({ ready }: { ready: boolean }) {
                 )}
               </>
             )}
+          </div>
           </div>
 
           {/* ---------------- CHOICE ---------------- */}

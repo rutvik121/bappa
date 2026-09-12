@@ -70,7 +70,31 @@ export function getClockOffset() {
   return clockOffset;
 }
 
-export function getFestivalStatus(now = Date.now() + clockOffset): FestivalStatus {
+/**
+ * How far this device's clock is from the server's.
+ *
+ * The countdown has to tick between snapshots, so it is read locally --
+ * but a browser clock is a number the person can set, and nothing about
+ * the one Bappa may depend on it. Every snapshot carries the server's
+ * time; this is the difference, applied to every reading so the local
+ * clock only ever supplies the ticking and never the truth.
+ *
+ * The lifecycle itself is not derived here at all: the server states it.
+ */
+let serverSkew = 0;
+
+export function setServerTime(serverNow: number) {
+  const next = serverNow - Date.now();
+  // A second either way is measurement noise on the round trip, not skew.
+  if (Math.abs(next - serverSkew) > 1000) serverSkew = next;
+}
+
+/** The clock everything in the piece reads. */
+export function festivalClock() {
+  return Date.now() + serverSkew + clockOffset;
+}
+
+export function getFestivalStatus(now = festivalClock()): FestivalStatus {
   const start = FESTIVAL_START.getTime();
   const end = FESTIVAL_END.getTime();
 
@@ -99,7 +123,7 @@ export interface Countdown {
 }
 
 /** Time left to build him. Reads the same shifted clock as everything else. */
-export function getCountdown(now = Date.now() + clockOffset): Countdown {
+export function getCountdown(now = festivalClock()): Countdown {
   const remaining = VISARJAN_TIME.getTime() - now;
   if (remaining <= 0) return { days: 0, hours: 0, minutes: 0, over: true };
 

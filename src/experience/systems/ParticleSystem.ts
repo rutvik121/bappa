@@ -65,9 +65,64 @@ export interface ParticleTelemetry {
  * centre rather than snapping to an origin that is not the sculpture.
  */
 let surfaceTargets: Float32Array | null = null;
+/** The same points, ordered by when they become clay. */
+let targetOrder: Uint32Array | null = null;
+let targetWeights: Float32Array | null = null;
+/** How much of him exists, mirrored here each frame by GanpatiModel. */
+let formationLevel = 0;
 
-export function setSurfaceTargets(points: Float32Array) {
+export function setSurfaceTargets(points: Float32Array, weights: Float32Array) {
   surfaceTargets = points;
+  targetWeights = weights;
+
+  // Sorted once, at load, so choosing where an offering lands is a binary
+  // search rather than a scan of fourteen thousand points per arrival.
+  const order = new Uint32Array(weights.length);
+  for (let i = 0; i < order.length; i++) order[i] = i;
+  targetOrder = order.sort((a, b) => weights[a] - weights[b]);
+}
+
+export function setFormationLevel(v: number) {
+  formationLevel = v;
+}
+
+/**
+ * Where a piece of offered material goes.
+ *
+ * Not anywhere on him -- to the frontier: the band of surface that is
+ * about to become clay. That is the whole difference between material
+ * completing a sculpture and particles decorating one. An offering left
+ * on day three settles low on the body because that is where he has got
+ * to; the same offering on day nine settles around the crown.
+ *
+ * Returns an index into `surfaceTargets`, already multiplied by three.
+ */
+function pickFrontierTarget(): number {
+  const order = targetOrder;
+  const weights = targetWeights;
+  if (!order || !weights || order.length === 0) return 0;
+
+  const n = order.length;
+
+  // First point not yet made.
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (weights[order[mid]] < formationLevel) lo = mid + 1;
+    else hi = mid;
+  }
+
+  // A band rather than a point, so a burst of arrivals thickens a whole
+  // passage of him instead of stacking on one spot.
+  const band = Math.max(1, (n * 0.07) | 0);
+
+  // He is whole: there is no frontier left, so material settles into the
+  // last passages to have formed rather than snapping to the base.
+  if (lo >= n) return order[n - 1 - ((Math.random() * band) | 0)] * 3;
+
+  const end = Math.min(n, lo + band);
+  return order[lo + ((Math.random() * (end - lo)) | 0)] * 3;
 }
 
 export interface SpawnOptions {
@@ -682,8 +737,7 @@ export class ParticleSystem {
           tel.arrived++;
 
           if (surfaceTargets && surfaceTargets.length >= 3) {
-            const sn = surfaceTargets.length / 3;
-            const pick = ((Math.random() * sn) | 0) * 3;
+            const pick = pickFrontierTarget();
             this.ax[i] = surfaceTargets[pick];
             this.ay[i] = surfaceTargets[pick + 1];
             this.az[i] = surfaceTargets[pick + 2];

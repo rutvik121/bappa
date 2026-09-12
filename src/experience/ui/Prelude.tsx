@@ -11,9 +11,13 @@ import { Masthead } from './Masthead';
 export function Prelude() {
   return (
     <div className="prelude">
-      <header className="layer layer--masthead in">
-        <Masthead />
-      </header>
+      {/* The same wrapper the live interface uses, so the words are in
+          exactly the place they will still be in once he arrives. */}
+      <div className="hero">
+        <header className="layer layer--masthead in">
+          <Masthead />
+        </header>
+      </div>
       <div className="ember in" aria-hidden="true">
         <span />
       </div>

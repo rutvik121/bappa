@@ -72,6 +72,14 @@ body {
   background: var(--ground);
 }
 
+/* The server-rendered words step aside the moment the live interface has
+   them. The opaque stage already covers them, so this changes nothing on
+   screen -- but without it the premise stays in the document twice, and a
+   screen reader reads the same heading through a second time. */
+html[data-live] .prelude {
+  display: none;
+}
+
 canvas {
   display: block;
   outline: none;
@@ -269,12 +277,51 @@ button {
 /* ORIENTATION                                                       */
 /* ---------------------------------------------------------------- */
 
+/**
+ * The hero composition.
+ *
+ * He is the centre of the room and these are the two pieces of
+ * information standing around him. The frame is the viewport itself --
+ * he is placed in the middle of it by the camera, not in the middle of
+ * whatever is left once the words have been laid out.
+ *
+ * Phone: there is no room beside him, so the composition is vertical.
+ * The camera lifts him into the upper frame and the words stack beneath,
+ * in the order they are needed: what this is, then the way in, then the
+ * clock.
+ */
+.hero {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: clamp(12px, 2.4vh, 22px);
+  padding: 0 var(--gutter) calc(var(--safe-bottom) + clamp(16px, 3.6vh, 40px));
+  pointer-events: none;
+}
+
+/* Inside the hero the two blocks are in flow, so they stack without
+   either one needing to know how tall the other is. */
+.hero .layer--masthead,
+.hero .layer--enter,
+.hero .layer--foot {
+  position: static;
+  padding: 0;
+}
+
 .layer--masthead {
-  top: calc(var(--safe-top) + clamp(22px, 5vh, 56px));
-  left: 0;
-  right: 0;
-  padding: 0 var(--gutter);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+}
+
+/* The way into the ritual, under him: the centre is the stage, so the
+   control that opens it stands there and not out at an edge. */
+.layer--enter {
+  display: flex;
+  justify-content: center;
 }
 
 .headline {
@@ -306,10 +353,6 @@ button {
 }
 
 .layer--foot {
-  bottom: calc(var(--safe-bottom) + clamp(18px, 4vh, 44px));
-  left: 0;
-  right: 0;
-  padding: 0 var(--gutter);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -391,20 +434,36 @@ button {
   color: var(--ink-1);
 }
 
-.invites {
+.doors {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   width: min(100%, 460px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-/* Four invitations. Each carries its own accent, used only in its mark
-   and in the state of having been chosen -- never as a fill. */
-.invite {
-  --accent: 255, 228, 200;
+.doors > li {
   display: flex;
-  flex-direction: column;
-  gap: 7px;
+}
+
+/* Four doorways. Each carries its own accent, used only in its mark
+   -- never as a fill. Choosing one is walking through it, so there is
+   no chosen state to hold: the panel is gone by the next breath. */
+.door {
+  --accent: 255, 228, 200;
+  flex: 1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'mark name'
+    'line line';
+  align-items: center;
+  /* Rows sit at the top rather than sharing the slack, so the four names
+     line up across the row whether or not a line wraps. */
+  align-content: start;
+  gap: 7px 8px;
   min-height: 96px;
   padding: 14px 14px 15px;
   text-align: left;
@@ -422,25 +481,21 @@ button {
     transform 160ms ease;
 }
 
-.invite--gratitude { --accent: 232, 170, 108; }
-.invite--wish { --accent: 240, 218, 170; }
-.invite--vighna { --accent: 186, 156, 138; }
-.invite--promise { --accent: 184, 196, 146; }
+.door--gratitude { --accent: 232, 170, 108; }
+.door--wish { --accent: 240, 218, 170; }
+.door--vighna { --accent: 186, 156, 138; }
+.door--promise { --accent: 184, 196, 146; }
 
-.invite-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.invite-mark {
+.door-mark {
+  grid-area: mark;
   flex: none;
   color: rgb(var(--accent));
   opacity: 0.75;
   transition: opacity 600ms ease;
 }
 
-.invite-name {
+.door-name {
+  grid-area: name;
   font-family: var(--sans);
   font-size: 11px;
   font-weight: 600;
@@ -449,7 +504,9 @@ button {
   color: var(--ink-1);
 }
 
-.invite-line {
+.door-line {
+  grid-area: line;
+  align-self: start;
   font-family: var(--serif);
   font-size: 18px;
   font-weight: 500;
@@ -457,44 +514,22 @@ button {
   color: var(--ink-2);
 }
 
-.invite:hover {
+.door:hover {
   border-color: var(--line-2);
   background: rgba(255, 228, 200, 0.04);
 }
 
-.invite:active {
-  transform: translateY(1px);
-}
-
-/* Chosen: the accent comes up in the edge and a breath of it in the
-   ground, and the other three step back. */
-.invite[aria-pressed='true'] {
-  border-color: rgba(var(--accent), 0.8);
-  background: rgba(var(--accent), 0.09);
-}
-
-.invite[aria-pressed='true'] .invite-mark {
+/* The accent answers on approach -- the only colour in the frame that
+   is not his, and only for as long as a hand is over it. */
+.door:hover .door-mark {
   opacity: 1;
 }
 
-.invite[aria-pressed='true'] .invite-line {
-  color: var(--ink-1);
+.door:active {
+  transform: translateY(1px);
 }
 
-.invites.has-choice .invite[aria-pressed='false'] {
-  opacity: 0.5;
-}
-
-.invites.has-choice .invite[aria-pressed='false']:hover {
-  opacity: 0.85;
-}
-
-.choose-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: min(100%, 460px);
+.aside--leave {
   margin-top: 14px;
 }
 
@@ -503,22 +538,28 @@ button {
 /* ---------------------------------------------------------------- */
 
 /* On a phone the writing sits high, where the keyboard cannot cover it. */
+/* Centred by its own margins rather than by a translate, so the only
+   transform on it is the entrance -- which lets it be moved off the
+   centre line on a wide screen without the two fighting. */
 .layer--write {
-  left: 50%;
+  left: var(--gutter);
+  right: var(--gutter);
   top: calc(var(--safe-top) + clamp(18px, 7vh, 64px));
-  width: min(560px, calc(100vw - var(--gutter) * 2));
-  transform: translate(-50%, 6px);
+  width: auto;
+  max-width: 560px;
+  margin-inline: auto;
+  transform: translateY(6px);
 }
 
 .layer--write.in {
-  transform: translate(-50%, 0);
+  transform: none;
 }
 
 /* On the way out, the written words hand off to the particles that have
    taken their shape: they leave faster and do not drift, so they appear
    consumed in place rather than sliding away. */
 .layer--write:not(.in) {
-  transform: translate(-50%, 0);
+  transform: none;
   transition:
     opacity 900ms ease-out,
     visibility 0s linear 900ms;
@@ -756,23 +797,19 @@ button {
     height: 42%;
   }
 
-  .invites {
+  .doors {
     grid-template-columns: repeat(4, 1fr);
     width: min(100%, 900px);
     gap: 12px;
   }
 
-  .invite {
+  .door {
     min-height: 108px;
     padding: 16px 16px 18px;
   }
 
-  .invite-line {
+  .door-line {
     font-size: 19px;
-  }
-
-  .choose-foot {
-    width: min(100%, 900px);
   }
 
   /* With room to spare the writing sits lower, over his base, where it
@@ -795,6 +832,85 @@ button {
   }
 }
 
+/* ---------------------------------------------------------------- */
+/* The wide composition                                              */
+/* ---------------------------------------------------------------- */
+
+/**
+ * Room enough to stand either side of him. He holds the middle of the
+ * viewport and the words move out to the edges, deliberately unevenly:
+ * the invitation on the left is the emotional half and carries the
+ * headline, the right is the clock and the way in. Neither column comes
+ * anywhere near his silhouette -- he is about a third of the frame wide,
+ * centred, so the columns sit in empty darkness.
+ *
+ * Must agree with `portrait` in CameraController, which stops lifting him
+ * up the frame at exactly this point.
+ */
+@media (min-width: 1000px) and (min-aspect-ratio: 6/5) {
+  .hero {
+    flex-direction: row;
+    /* Stretched, so each column places itself on its own vertical line
+       rather than both being centred on his. */
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 3vw;
+    padding: 0 max(var(--gutter), 3.4vw);
+  }
+
+  /* LEFT -- the invitation, riding above the centre line. */
+  .hero .layer--masthead {
+    width: min(30vw, 420px);
+    justify-content: center;
+    align-items: flex-start;
+    text-align: left;
+    padding-bottom: 12vh;
+  }
+
+  /* RIGHT -- the clock and the way in, set well below it. The two
+     columns are deliberately off each other's line: level, they read as
+     a caption either side of a product shot. */
+  .hero .layer--foot {
+    width: min(24vw, 310px);
+    justify-content: center;
+    align-items: flex-end;
+    text-align: right;
+    gap: 20px;
+    padding-top: 24vh;
+  }
+
+  .hero .layer--foot .time {
+    align-items: flex-end;
+  }
+
+  /* Down the right the natural order already reads correctly: when it
+     is, how long is left, the way in, and how many have been before. */
+  .hero .layer--foot .rite {
+    order: 0;
+  }
+
+  /* Out of the row and onto the centre line of the viewport itself, so
+     the way in is under him rather than between two columns of unequal
+     width. */
+  .hero .layer--enter {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: clamp(40px, 8vh, 92px);
+  }
+
+  .headline {
+    font-size: clamp(46px, 4.6vw, 64px);
+  }
+
+  /* Nothing is printed over him any more, so the darkness that made the
+     words readable is no longer doing anything but flattening the room. */
+  .overlay[data-scene='idle'] .scrim--top,
+  .overlay[data-scene='idle'] .scrim--bottom {
+    opacity: 0;
+  }
+}
+
 /* Short landscape phones: keep the stack clear of the sculpture. */
 @media (max-height: 520px) {
   .headline {
@@ -812,7 +928,7 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .layer,
   .scrim,
-  .invite,
+  .door,
   .rite,
   .farewell-line {
     transition-duration: 250ms !important;
@@ -826,7 +942,7 @@ button {
   .layer--write,
   .layer--write.in,
   .layer--write:not(.in) {
-    transform: translate(-50%, 0);
+    transform: none;
   }
 
   .closing-line {

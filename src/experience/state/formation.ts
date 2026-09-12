@@ -18,14 +18,20 @@ import { useCollective, TARGET_OFFERINGS } from './collective';
  */
 
 /**
- * Where he starts: already a murti.
+ * Where he starts: begun, not finished.
  *
- * Bappa is the hero of every frame, so even on the first morning he has to
- * read as terracotta -- a sculpture with unfinished passages still made of
- * loose material -- rather than as a cloud of particles in the shape of
- * one. Everything the days and the offerings add is built above this.
+ * Low on purpose. He is not a finished murti that offerings decorate --
+ * he is the thing the offerings are making, so on the first morning most
+ * of him is still loose material holding his shape, and only the base and
+ * the lower body have settled into clay. Everything the days and the
+ * offerings add is built above this.
+ *
+ * Not lower than this, though: the silhouette has to be unmistakably him
+ * from the first frame. Below roughly a quarter there is not enough
+ * settled clay to read as terracotta at all, and he becomes a cloud in
+ * the shape of a murti rather than a murti being made.
  */
-const FLOOR = 0.7;
+const FLOOR = 0.3;
 
 /** Weights for the accelerated term. */
 const DAY_WEIGHT = 0.35;
@@ -68,19 +74,29 @@ export function getFormationOverride() {
   return override;
 }
 
-/** The current value, for the render loop. */
+/**
+ * The current value, for the render loop.
+ *
+ * Read from the collective rather than computed. How built he is is a
+ * fact about the one Bappa, not about this browser, so the server decides
+ * it and every client is handed the same number -- which is the only way
+ * two windows can be looking at the same sculpture.
+ *
+ * The local computation below it is the fallback for the moment before
+ * the first snapshot lands, and for the development panel standing at a
+ * day it has invented.
+ */
 export function currentFormation(): number {
   if (override !== null) return override;
 
-  const status = getFestivalStatus();
-  const offerings = useCollective.getState().count;
+  const { build, ready } = useCollective.getState();
+  if (ready) return build;
 
-  // Before he arrives he is as he will be on the first morning; once the
-  // window closes he is whole, and the visarjan takes him from there.
+  const status = getFestivalStatus();
   if (status.phase === 'BEFORE') return FLOOR;
   if (status.phase === 'ENDED') return 1;
 
-  return formationFrom({ day: status.day, offerings });
+  return formationFrom({ day: status.day, offerings: 0 });
 }
 
 /** Development readout only. */
