@@ -131,6 +131,14 @@ export function supabaseStore(config: { url: string; key: string }): CollectiveS
       return data ? Number(data.seq) : 0;
     },
 
+    dissolve: async () => {
+      // Idempotent in the database: it stamps the moment on the first
+      // call and does nothing on every call after, so this can be reached
+      // from a request path without being scheduled or coordinated.
+      const { error } = await db.rpc('dissolve_offerings');
+      if (error) throw new Error(`dissolve_offerings: ${error.message}`);
+    },
+
     bump: async (bucket, windowSeconds) => {
       const { data, error } = await db.rpc('bump_rate', {
         p_bucket: bucket,

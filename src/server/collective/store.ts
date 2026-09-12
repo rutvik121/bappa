@@ -68,6 +68,17 @@ export interface CollectiveStore {
 
   /** Hits this bucket has used inside its window. */
   bump(bucket: string, windowSeconds: number): Promise<number>;
+
+  /**
+   * Let go of everything but the number.
+   *
+   * Called once he is gone. What survives is how many people left
+   * something with him -- the aggregate the piece is actually about,
+   * which identifies nobody. What goes is every individual offering and
+   * every rate-limit bucket. Idempotent, so it can be reached from a
+   * request path without being scheduled.
+   */
+  dissolve(): Promise<void>;
 }
 
 /**
@@ -184,6 +195,13 @@ function redisStore(r: Redis): CollectiveStore {
       if (used === 1) await command(r, 'expire', bucket, String(windowSeconds));
       return used;
     },
+
+    dissolve: async () => {
+      // The log and the idempotency keys go; the tally stays. Rate-limit
+      // buckets expire on their own within the hour.
+      await command(r, 'del', KEY_LOG);
+      await command(r, 'del', KEY_SEQ);
+    },
   };
 }
 
@@ -265,6 +283,15 @@ function memoryStore(): CollectiveStore {
       }
       hit.used += 1;
       return hit.used;
+    },
+
+    dissolve: async () => {
+      const m = memory();
+      m.log.length = 0;
+      m.byId.clear();
+      m.buckets.clear();
+      // m.count is deliberately kept: he was made by this many people,
+      // and that stays true after he has gone.
     },
   };
 }
