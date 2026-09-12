@@ -7,4 +7,11 @@ out
 tsconfig.tsbuildinfo
 .vercel
 
-.vercel
+# Agent skills, restored with `npx skills add supabase/agent-skills`.
+# The content is third-party documentation and the entries under
+# .claude/skills are symlinks into it -- which a Windows checkout without
+# core.symlinks turns into text files containing a path, leaving the
+# skills silently broken. skills-lock.json is committed instead, so the
+# versions are pinned and one command restores them per machine.
+.agents/
+.claude/skills/
