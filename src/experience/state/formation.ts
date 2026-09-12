@@ -74,19 +74,29 @@ export function getFormationOverride() {
   return override;
 }
 
-/** The current value, for the render loop. */
+/**
+ * The current value, for the render loop.
+ *
+ * Read from the collective rather than computed. How built he is is a
+ * fact about the one Bappa, not about this browser, so the server decides
+ * it and every client is handed the same number -- which is the only way
+ * two windows can be looking at the same sculpture.
+ *
+ * The local computation below it is the fallback for the moment before
+ * the first snapshot lands, and for the development panel standing at a
+ * day it has invented.
+ */
 export function currentFormation(): number {
   if (override !== null) return override;
 
-  const status = getFestivalStatus();
-  const offerings = useCollective.getState().count;
+  const { build, ready } = useCollective.getState();
+  if (ready) return build;
 
-  // Before he arrives he is as he will be on the first morning; once the
-  // window closes he is whole, and the visarjan takes him from there.
+  const status = getFestivalStatus();
   if (status.phase === 'BEFORE') return FLOOR;
   if (status.phase === 'ENDED') return 1;
 
-  return formationFrom({ day: status.day, offerings });
+  return formationFrom({ day: status.day, offerings: 0 });
 }
 
 /** Development readout only. */

@@ -1,57 +1,38 @@
 'use client';
 
 import { create } from 'zustand';
+import {
+  formationFrom,
+  type BappaSnapshot,
+  type CollectiveEvent,
+  type OfferingEvent,
+  type OfferingType,
+} from '@/shared/collective';
+import { setServerTime } from './festival';
 
 /**
- * How much of Bappa exists.
+ * One Bappa, many people.
  *
- * He is not delivered whole. He begins as a line -- a drawing of a
- * murti, nothing more -- and the offerings people leave are what give
- * him body. The count below is the only thing that decides how much of
- * the sculpture has materialised.
+ * This browser holds no opinion about how built he is. It is told -- by
+ * /api/offerings when it arrives and whenever it resynchronises, and by
+ * /api/stream while it is watching. Everything here is either a copy of
+ * what the server said or a decision about how to *present* it, and those
+ * two are kept deliberately apart:
  *
- * Only the NUMBER of offerings ever crosses this boundary. No text, no
- * type, no identity: the collective is a tally, which is precisely what
- * makes it safe to share.
+ *   offeringsCount    what the server says has been left with him
+ *   presentedCount    how many of those this browser has finished showing
+ *
+ * They are not the same number and are not meant to be. Five offerings
+ * arriving together are shown one at a time; the tally is already five
+ * ahead while the third is still travelling.
+ *
+ * Only a type, an intensity and a seed ever leave this browser. The words
+ * are sampled into particles here and wiped in the same breath.
  */
 
-/** Offerings needed to complete him. Auspicious, and configurable. */
-export const TARGET_OFFERINGS = Number(
-  process.env.NEXT_PUBLIC_BAPPA_TARGET ?? 1008
-);
+export const TARGET_OFFERINGS = Number(process.env.NEXT_PUBLIC_BAPPA_TARGET ?? 1008);
 
-/**
- * Maps the tally to how built he is.
- *
- * Deliberately not linear. Against a target in the thousands a linear
- * map makes a single offering worth a tenth of a percent -- invisible,
- * which would tell every early visitor that they did not matter. The
- * curve front-loads visible change so the first hundred people watch him
- * take shape, and leaves a long tail so the last ones still have
- * something to complete.
- */
-export function buildFromCount(count: number): number {
-  if (count <= 0) return 0;
-  return Math.min(1, Math.pow(count / TARGET_OFFERINGS, 0.6));
-}
-
-/**
- * Where the tally lives.
- *
- * This is the seam for the backend. The local implementation below keeps
- * the count in this browser, which is enough to build and preview the
- * whole experience but is NOT the collaborative product: for that, every
- * visitor has to read and increment one shared number. Swap this for a
- * server-backed source and nothing else in the scene changes.
- */
-export interface CollectiveSource {
-  load(): Promise<number>;
-  add(): Promise<number>;
-  /** Optional; used only by the development panel. */
-  set?(n: number): Promise<number>;
-}
-
-const STORAGE_KEY = 'bappa.offerings';
+const FESTIVAL_DAYS = 10;
 
 /**
  * Whether this device has ever left something with him. A single flag --
@@ -68,122 +49,267 @@ export function hasLeftSomething(): boolean {
   }
 }
 
-export const localSource: CollectiveSource = {
-  async load() {
-    try {
-      return Number(localStorage.getItem(STORAGE_KEY) ?? 0) || 0;
-    } catch {
-      return 0;
-    }
-  },
-  async set(n: number) {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(n));
-      return n;
-    } catch {
-      return n;
-    }
-  },
-  async add() {
-    try {
-      const next = (Number(localStorage.getItem(STORAGE_KEY) ?? 0) || 0) + 1;
-      localStorage.setItem(STORAGE_KEY, String(next));
-      return next;
-    } catch {
-      return 0;
-    }
-  },
-};
-
-/**
- * The shared tally, held by /api/offerings. This is the collaborative
- * product: one number that every visitor reads and adds to, so the Bappa
- * you arrive at is the one everyone before you built.
- *
- * A throttled add still returns the true count, so a rate-limited visitor
- * sees Bappa exactly as everyone else does.
- */
-export const remoteSource: CollectiveSource = {
-  async load() {
-    const r = await fetch('/api/offerings', { cache: 'no-store' });
-    const d = (await r.json()) as { count: number };
-    return d.count;
-  },
-  async add() {
-    const r = await fetch('/api/offerings', { method: 'POST' });
-    const d = (await r.json()) as { count: number };
-    return d.count;
-  },
-};
+export type Connection = 'connecting' | 'live' | 'offline';
 
 interface CollectiveStore {
+  /** The canonical state, as last told to us. */
+  snapshot: BappaSnapshot | null;
   count: number;
-  /** 0..1 target; the model eases toward this rather than snapping. */
+  /** 0..1, the server's number. Never computed here. */
   build: number;
   ready: boolean;
-  init: (source?: CollectiveSource) => Promise<void>;
-  record: () => Promise<void>;
+  connection: Connection;
+
+  /** Offerings seen but not yet shown, oldest first. */
+  queue: OfferingEvent[];
+  presentedCount: number;
+
+  init: () => void;
+  stop: () => void;
+  /** Takes the next offering to present, or null if there is nothing. */
+  takeNext: () => OfferingEvent | null;
+  /** Development only. */
   setCount: (n: number) => Promise<void>;
+  record: () => Promise<void>;
 }
 
-let source: CollectiveSource = localSource;
+/** Offerings this browser submitted, so they are not shown twice. */
+const own = new Set<string>();
 
-export const useCollective = create<CollectiveStore>((set) => ({
+let stream: EventSource | null = null;
+let retry: ReturnType<typeof setTimeout> | null = null;
+
+export const useCollective = create<CollectiveStore>((set, get) => ({
+  snapshot: null,
   count: 0,
-  build: 0,
+  build: formationFrom(1, 0, TARGET_OFFERINGS, FESTIVAL_DAYS),
   ready: false,
+  connection: 'connecting',
 
-  init: async (s) => {
-    if (s) {
-      source = s;
-      const count = await source.load();
-      set({ count, build: buildFromCount(count), ready: true });
-      return;
-    }
+  queue: [],
+  presentedCount: 0,
 
-    // Ask the server whether a shared store is actually configured. It
-    // answers with the count and with `shared`, so the common case costs
-    // one round trip and an unconfigured deploy degrades to counting
-    // locally instead of reporting zero offerings forever.
-    try {
-      const r = await fetch('/api/offerings', { cache: 'no-store' });
-      if (r.ok) {
-        const d = (await r.json()) as { count: number; shared: boolean };
-        if (d.shared) {
-          source = remoteSource;
-          set({ count: d.count, build: buildFromCount(d.count), ready: true });
-          return;
-        }
-      }
-    } catch {
-      // Offline, or no route: fall through to the local tally.
-    }
-
-    source = localSource;
-    const count = await source.load();
-    set({ count, build: buildFromCount(count), ready: true });
+  init: () => {
+    if (stream) return;
+    connect(set, get);
   },
 
-  record: async () => {
-    try {
-      localStorage.setItem(LEFT_KEY, '1');
-    } catch {
-      // Private mode: the ending simply will not mention it.
-    }
-    try {
-      const count = await source.add();
-      set({ count, build: buildFromCount(count) });
-    } catch {
-      // The connection dropped. The offering still happened here, and he
-      // still takes it in; the shared tally catches up on the next visit.
-      set((s) => ({ count: s.count + 1, build: buildFromCount(s.count + 1) }));
-    }
+  stop: () => {
+    stream?.close();
+    stream = null;
+    if (retry) clearTimeout(retry);
+    retry = null;
+  },
+
+  takeNext: () => {
+    const [next, ...rest] = get().queue;
+    if (!next) return null;
+    set((s) => ({ queue: rest, presentedCount: s.presentedCount + 1 }));
+    return next;
   },
 
   setCount: async (n) => {
-    const count = source.set ? await source.set(n) : n;
-    set({ count, build: buildFromCount(count) });
+    // Development only; the route refuses this in production.
+    try {
+      await fetch('/api/dev/offerings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count: n }),
+      });
+    } catch {
+      // The panel simply will not move the tally.
+    }
   },
 
+  record: async () => {
+    await submitOffering('GRATITUDE', 0.5, Math.floor(Math.random() * 2 ** 31));
+  },
 }));
 
+/**
+ * A handle on the collective for the development panel and for driving
+ * the two-window tests from outside the page. Never present in a
+ * production bundle.
+ */
+if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+  (window as unknown as { __bappa?: unknown }).__bappa = useCollective;
+}
+
+/* ------------------------------------------------------------------ */
+/* Talking to the server                                               */
+/* ------------------------------------------------------------------ */
+
+type Set = (partial: Partial<CollectiveStore> | ((s: CollectiveStore) => Partial<CollectiveStore>)) => void;
+type Get = () => CollectiveStore;
+
+function applySnapshot(set: Set, snapshot: BappaSnapshot) {
+  // The countdown ticks locally between snapshots; this is what keeps it
+  // ticking from the server's clock rather than from this device's.
+  setServerTime(snapshot.now);
+  set({
+    snapshot,
+    count: snapshot.offeringsCount,
+    build: snapshot.formationProgress,
+    ready: true,
+    connection: 'live',
+  });
+}
+
+function connect(set: Set, get: Get) {
+  // The cursor rides on the connection so a reconnect resumes rather than
+  // replays; EventSource sends it back as Last-Event-ID by itself, and the
+  // query parameter covers the first connection.
+  const since = get().snapshot?.seq ?? 0;
+  const source = new EventSource(`/api/stream?since=${since}`);
+  stream = source;
+
+  source.addEventListener('snapshot', (e) => {
+    const snapshot = parse<BappaSnapshot>((e as MessageEvent).data);
+    if (!snapshot) return;
+    applySnapshot(set, snapshot);
+  });
+
+  source.addEventListener('collective', (e) => {
+    const event = parse<CollectiveEvent>((e as MessageEvent).data);
+    if (!event) return;
+    handle(set, get, event);
+  });
+
+  source.onopen = () => set({ connection: 'live' });
+
+  source.onerror = () => {
+    // EventSource reconnects by itself, but only while the response was a
+    // stream. A hard failure needs its own retry, and either way the
+    // scene must not change: he simply stops receiving news for a moment.
+    set({ connection: get().ready ? 'offline' : 'connecting' });
+    if (source.readyState === EventSource.CLOSED) {
+      stream = null;
+      if (retry) clearTimeout(retry);
+      // On the way back, take a fresh snapshot rather than continuing from
+      // a local state that may be minutes stale.
+      retry = setTimeout(() => void resync(set, get), 4000);
+    }
+  };
+}
+
+async function resync(set: Set, get: Get) {
+  try {
+    const r = await fetch('/api/offerings', { cache: 'no-store' });
+    if (r.ok) applySnapshot(set, (await r.json()) as BappaSnapshot);
+  } catch {
+    set({ connection: 'offline' });
+  }
+  if (!stream) connect(set, get);
+}
+
+function handle(set: Set, get: Get, event: CollectiveEvent) {
+  switch (event.kind) {
+    case 'OFFERING_RECEIVED': {
+      const { offering } = event;
+      // The tally is the server's, and it moves the moment we hear about
+      // it -- even though the offering itself may not be shown for a
+      // while yet. State and presentation are not the same clock.
+      //
+      // Set, not incremented: the event carries the count it produced, so
+      // a missed or repeated event cannot drift this browser's idea of
+      // how many people have been here.
+      set({ count: event.offeringsCount, build: event.formationProgress });
+
+      // Ours: already on screen, carrying the words it was made from.
+      if (own.has(offering.id)) {
+        own.delete(offering.id);
+        set((s) => ({ presentedCount: s.presentedCount + 1 }));
+        return;
+      }
+
+      set((s) => ({ queue: [...s.queue, offering] }));
+      return;
+    }
+
+    case 'BAPPA_FORMATION_UPDATED':
+      set({ count: event.offeringsCount, build: event.formationProgress });
+      return;
+
+    case 'VISARJAN_STARTED':
+    case 'VISARJAN_COMPLETE':
+      // The scene's own festival clock drives the dissolve; this is here
+      // so the lifecycle is on the wire for when it stops being local.
+      void resync(set, get);
+      return;
+  }
+}
+
+/**
+ * Leave something with him.
+ *
+ * The id is generated here and reused on every retry of the same
+ * submission, which is what makes a double click, a refresh mid-send or a
+ * network retry land as one offering rather than three.
+ */
+export async function submitOffering(
+  type: OfferingType,
+  intensity: number,
+  seed: number
+): Promise<{ ok: boolean; reason?: string }> {
+  const submissionId = newId();
+  own.add(submissionId);
+
+  try {
+    localStorage.setItem(LEFT_KEY, '1');
+  } catch {
+    // Private mode: the ending simply will not mention it.
+  }
+
+  try {
+    const r = await fetch('/api/offerings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ submissionId, type, intensity, seed }),
+    });
+
+    const body = (await r.json()) as
+      | { ok: true; offering: OfferingEvent; snapshot: BappaSnapshot }
+      | { ok: false; reason: string; snapshot: BappaSnapshot };
+
+    // Even a refusal carries the current state, so a throttled or late
+    // visitor still sees Bappa exactly as everyone else does.
+    if (body.snapshot) {
+      useCollective.setState({
+        snapshot: body.snapshot,
+        count: body.snapshot.offeringsCount,
+        build: body.snapshot.formationProgress,
+        ready: true,
+      });
+    }
+
+    if (!body.ok) {
+      // A duplicate is our own first attempt still working: the offering
+      // is coming, so it stays claimed and is not shown a second time
+      // when it arrives down the stream.
+      if (body.reason !== 'duplicate') own.delete(submissionId);
+      return { ok: false, reason: body.reason };
+    }
+
+    return { ok: true };
+  } catch {
+    // The connection dropped. His own animation still plays -- it is
+    // already underway and it is theirs -- but nothing is invented in the
+    // shared tally, which would be a contribution that never existed.
+    own.delete(submissionId);
+    return { ok: false, reason: 'offline' };
+  }
+}
+
+function newId(): string {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID().replace(/-/g, '');
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function parse<T>(raw: string): T | null {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}

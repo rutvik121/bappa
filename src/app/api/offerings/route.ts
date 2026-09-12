@@ -1,101 +1,69 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { getSnapshot, submitOffering } from '@/server/collective/state';
 
 /**
- * The shared tally.
+ * Leaving something with him, and asking how he is.
  *
- * One number, held for everyone: how many offerings have been left with
- * Bappa. It is the only thing that decides how much of him exists, and
- * the only thing that ever crosses from a visitor's browser to the
- * server. No text, no type, no identity -- which is exactly what makes a
- * shared counter safe to run at all.
+ * GET is the snapshot a client starts from and resynchronises to. POST is
+ * the only way an offering enters the collective, and it is the server
+ * that decides whether it did -- a browser cannot announce that the tally
+ * moved, it can only ask.
  *
- * Spoken to over Upstash's REST protocol with plain `fetch`, so this
- * works with a Vercel KV store or a standalone Upstash one and pulls in
- * no dependency for it.
+ * What crosses this boundary is a type, an intensity and a seed. Never the
+ * words: they are sampled into particles in the browser and wiped in the
+ * same breath, and nothing here has ever been able to read them.
  */
 
-const KEY = 'bappa:offerings';
-
-/**
- * Offerings one address can leave per window. Bappa is built by a crowd;
- * without this, one person with a loop could finish him in a minute and
- * take that from everyone else.
- */
-const RATE_LIMIT = 20;
-const RATE_WINDOW_SECONDS = 3600;
-
-/** Counter reads must never be cached -- the whole point is that it moves. */
 export const dynamic = 'force-dynamic';
 
-interface Store {
-  url: string;
-  token: string;
-}
+const noStore = { headers: { 'Cache-Control': 'no-store' } };
 
-/**
- * Vercel KV and the Upstash integration expose the same store under
- * different variable names depending on how it was provisioned.
- */
-function getStore(): Store | null {
-  const url = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return { url, token };
-}
-
-async function redis(store: Store, ...command: string[]): Promise<unknown> {
-  const path = command.map(encodeURIComponent).join('/');
-  const res = await fetch(`${store.url}/${path}`, {
-    headers: { Authorization: `Bearer ${store.token}` },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`redis ${res.status}`);
-  const body = (await res.json()) as { result?: unknown };
-  return body.result;
-}
-
-const toCount = (v: unknown) => Number(v ?? 0) || 0;
-
-/**
- * `shared: false` is an honest signal, not an error: it tells the client
- * no store is configured, so it should fall back to counting locally
- * rather than silently reporting zero offerings forever.
- */
 export async function GET() {
-  const store = getStore();
-  if (!store) return NextResponse.json({ count: 0, shared: false });
-
-  try {
-    return NextResponse.json({ count: toCount(await redis(store, 'get', KEY)), shared: true });
-  } catch {
-    return NextResponse.json({ count: 0, shared: false });
-  }
+  return NextResponse.json(await getSnapshot(), noStore);
 }
 
 export async function POST(req: NextRequest) {
-  const store = getStore();
-  if (!store) return NextResponse.json({ count: 0, shared: false });
+  let body: unknown = null;
+  try {
+    body = await req.json();
+  } catch {
+    // An empty or malformed body is simply an invalid offering.
+  }
 
+  const input = (body ?? {}) as Record<string, unknown>;
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
 
-  try {
-    const rateKey = `bappa:rate:${ip}`;
-    const used = toCount(await redis(store, 'incr', rateKey));
-    // Set the expiry on first use, so the window slides from the first
-    // offering rather than being refreshed by every one after it.
-    if (used === 1) await redis(store, 'expire', rateKey, String(RATE_WINDOW_SECONDS));
+  const result = await submitOffering(
+    {
+      submissionId: input.submissionId,
+      type: input.type,
+      intensity: input.intensity,
+      seed: input.seed,
+    },
+    ip
+  );
 
-    if (used > RATE_LIMIT) {
-      // Still return the true count: a throttled visitor should see Bappa
-      // exactly as everyone else does, just without having added to him.
-      return NextResponse.json(
-        { count: toCount(await redis(store, 'get', KEY)), shared: true, throttled: true },
-        { status: 429 }
-      );
-    }
-
-    return NextResponse.json({ count: toCount(await redis(store, 'incr', KEY)), shared: true });
-  } catch {
-    return NextResponse.json({ count: 0, shared: false });
+  if (!result.ok) {
+    // The snapshot rides along even on a refusal: a throttled or late
+    // visitor should still see Bappa exactly as everyone else does.
+    const status =
+      result.reason === 'invalid'
+        ? 400
+        : result.reason === 'closed'
+          ? 409
+          : // A duplicate still in flight is not an error the caller did:
+            // its first attempt is working, and it should simply wait.
+            result.reason === 'duplicate'
+            ? 202
+            : 429;
+    return NextResponse.json(
+      { ok: false, reason: result.reason, snapshot: result.snapshot },
+      { ...noStore, status }
+    );
   }
+
+  return NextResponse.json(
+    { ok: true, offering: result.offering, snapshot: result.snapshot, duplicate: result.duplicate },
+    noStore
+  );
 }
