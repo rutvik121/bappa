@@ -66,7 +66,10 @@ create table if not exists public.offerings (
   created_at      timestamptz not null default now()
 );
 
-create index if not exists offerings_seq_idx on public.offerings (seq);
+-- No index on seq here: `unique` above already creates one, and adding a
+-- second btree on the same column only doubles the write cost of every
+-- offering. Dropped rather than left, in case it was created earlier.
+drop index if exists public.offerings_seq_idx;
 
 -- ------------------------------------------------------------------
 -- Leaving something with him
@@ -175,6 +178,13 @@ alter table public.offerings   enable row level security;
 alter table public.bappa_state enable row level security;
 alter table public.rate_limits enable row level security;
 
+-- Deliberately NOT `force row level security`. Forcing applies policies
+-- to the table owner too, and leave_offering is SECURITY DEFINER so it
+-- runs as exactly that -- its insert would then be judged by policies
+-- that permit no writes at all, and every offering would fail. The
+-- owner is not on the request path anyway: PostgREST arrives as anon,
+-- authenticated or service_role, all of which these policies do cover.
+
 -- Anyone may watch. Nobody may write with the public key: every write
 -- goes through the server, which is what keeps the state canonical --
 -- a browser cannot announce that the tally moved, it can only ask.
@@ -192,6 +202,15 @@ create policy "tally is public"
 
 -- No policy on rate_limits at all: with RLS on and nothing granted, it
 -- is invisible to the public key and reachable only by the service role.
+
+-- Defence in depth. Supabase grants the public keys broad table
+-- privileges by default and leaves the policies above to do the gating,
+-- which works right up until someone adds a permissive policy in a
+-- hurry. Nothing here is ever written by a browser under any policy, so
+-- the privilege is taken away as well as the permission.
+revoke insert, update, delete, truncate on public.offerings from anon, authenticated;
+revoke insert, update, delete, truncate on public.bappa_state from anon, authenticated;
+revoke all on public.rate_limits from anon, authenticated;
 
 -- These two run as their owner and so bypass every policy above. Left
 -- reachable they would be a way for anyone holding the public key to
