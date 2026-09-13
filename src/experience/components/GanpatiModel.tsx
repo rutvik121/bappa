@@ -12,6 +12,8 @@ import { createFormationCloud, type FormationCloud } from '../systems/FormationC
 import type { PerfProfile } from '../systems/perf';
 import { ParticleSystem, setFormationLevel } from '../systems/ParticleSystem';
 import type { ParticleHandle } from './ParticleField';
+import { getRitualState, getSthapanaArrival } from '../state/festival';
+import { VISARJAN_DURATION } from './DissolveController';
 
 export const GANPATI_URL = '/models/ganpati.glb';
 
@@ -108,6 +110,7 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
       value: Array.from({ length: IMPACT_SLOTS }, () => new THREE.Vector4(0, 0, 0, -1)),
     },
     uImpactCount: { value: 0 },
+    uBreath: { value: 0 },
   });
 
   /**
@@ -169,15 +172,34 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
       }) => {
         shader.uniforms.uDissolve = uniforms.current.uDissolve;
         shader.uniforms.uFormation = uniforms.current.uFormation;
+        shader.uniforms.uBreath = uniforms.current.uBreath;
 
         shader.vertexShader = shader.vertexShader
           .replace(
             '#include <common>',
-            '#include <common>\nattribute float aFormWeight;\nvarying float vFormWeight;\nvarying vec3 vLocalPos;'
+            `#include <common>
+             attribute float aFormWeight;
+             varying float vFormWeight;
+             varying vec3 vLocalPos;
+             uniform float uBreath;`
           )
           .replace(
             '#include <begin_vertex>',
-            '#include <begin_vertex>\nvFormWeight = aFormWeight;\nvLocalPos = position;'
+            `#include <begin_vertex>
+             vFormWeight = aFormWeight;
+             vLocalPos = position;
+
+             // Anatomical breathing: mid-torso, belly, and upper chest.
+             // Pedestal/base (hNorm < 0.32) and crown/head/ears (hNorm > 0.67) are 100% stationary.
+             float hNorm = clamp((position.y + 0.4990234) / 0.9980468, 0.0, 1.0);
+             float verticalMask = smoothstep(0.32, 0.42, hNorm) * (1.0 - smoothstep(0.56, 0.67, hNorm));
+             // Bappa faces +X in authored coordinates; expand belly, chest, and lateral flanks while keeping back stationary
+             float anteriorMask = smoothstep(-0.12, 0.04, position.x);
+             float breathMask = verticalMask * anteriorMask;
+
+             // Displace along outward surface normal for 3D silhouette contour expansion + gentle anterior lift
+             vec3 breathDir = normalize(normal * 0.75 + vec3(0.55, 0.20, 0.0));
+             transformed += breathDir * (breathMask * uBreath);`
           );
 
         shader.fragmentShader = shader.fragmentShader.replace(
@@ -273,6 +295,8 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
           `void main() {\n${carveChunk}`
         );
       };
+      mat.customProgramCacheKey = () => 'ganpati-material-living-v2';
+      depth.customProgramCacheKey = () => 'ganpati-depth-living-v2';
       mesh.customDepthMaterial = depth;
 
       mesh.material = mat;
@@ -372,44 +396,102 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
       uniforms.current.uImpactCount.value = live;
     }
 
+    const ritualState = getRitualState();
+    const sthapana = getSthapanaArrival();
     const target = currentFormation();
-    // A jump this large cannot come from offerings arriving -- one is
-    // worth a fraction of a percent -- so it is either the first frame or
-    // the development day control. Both should land immediately; only
-    // genuine accumulation is worth easing.
-    const jumped = Math.abs(target - formation.current) > 0.15;
-    if (!settled.current || jumped) {
-      // A visitor arriving on day six finds him as built as day six left
-      // him -- he does not form from nothing while they watch. Only what
-      // happens during their own visit animates.
-      settled.current = true;
-      formation.current = target;
-    } else {
-      formation.current += (target - formation.current) * Math.min(1, dt * 0.5);
-    }
-    uniforms.current.uFormation.value = formation.current;
-    // Offerings aim at the frontier, so the particle system needs to know
-    // where it currently is -- from here, where it is already eased.
-    setFormationLevel(formation.current);
 
+    if (ritualState === 'PRE_STHAPANA') {
+      formation.current = 0;
+      uniforms.current.uFormation.value = 0;
+      setFormationLevel(0);
+    } else if (sthapana.isArriving) {
+      // Sthapana arrival progression:
+      // 0 - 2.5s: Anticipation — empty asana, uFormation = 0
+      // 2.5 - 9.5s: Emergence — Bappa forms from 0 toward target (0.60 Day 1 baseline)
+      // 9.5 - 12.5s: Settling — Bappa settles onto the asana at target
+      // 12.5 - 14.0s: Awakening — Bappa is formed at target, breathing awakens
+      if (sthapana.elapsed < 2.5) {
+        formation.current = 0;
+      } else if (sthapana.elapsed < 9.5) {
+        const k = (sthapana.elapsed - 2.5) / 7.0;
+        const ease = k * k * (3 - 2 * k);
+        formation.current = target * ease;
+      } else {
+        formation.current = target;
+      }
+      uniforms.current.uFormation.value = formation.current;
+      setFormationLevel(formation.current);
+    } else {
+      // Normal BAPPA_PRESENT accumulation
+      const jumped = Math.abs(target - formation.current) > 0.15;
+      if (!settled.current || jumped) {
+        settled.current = true;
+        formation.current = target;
+      } else {
+        formation.current += (target - formation.current) * Math.min(1, dt * 0.5);
+      }
+      uniforms.current.uFormation.value = formation.current;
+      setFormationLevel(formation.current);
+    }
 
     if (!group.current) return;
 
-    // "Breathing" is environmental, not anatomical -- Bappa is stone-still
-    // and it is the world that moves fractionally around him.
+    // Pedestal and base remain completely rigid and grounded at the altar center.
+    group.current.position.y = BAPPA_CENTER.y - TARGET_HEIGHT * 0.5;
+    group.current.rotation.y = 0;
+
+    // Authoritative ritual state: Bappa is visible during BAPPA_PRESENT (including Sthapana),
+    // and hides once Visarjan dissolve completes.
+    const { state: sceneState, elapsed: sceneElapsed } = useScene.getState();
+    const isVisarjanCompleted = sceneState === 'VISARJAN' && sceneElapsed >= VISARJAN_DURATION;
+    const isPresent = (ritualState === 'BAPPA_PRESENT' || sthapana.isArriving) && !isVisarjanCompleted;
+    group.current.visible = isPresent;
+
     const state = useScene.getState().state;
-    // The stillness is the first phase, and it has to be real: from the
-    // moment Visarjan begins he does not move at all. Letting the breath
-    // run through the hold made it read as a pause in an animation
-    // rather than as the room going quiet to look at him.
+    // Visarjan is complete stillness
     const alive = state === 'VISARJAN' ? 0 : 1;
-    const breath = Math.sin(t * 0.42) * 0.0045 + Math.sin(t * 0.17) * 0.0025;
-    group.current.position.y = BAPPA_CENTER.y - TARGET_HEIGHT * 0.5 + breath * alive;
-    group.current.rotation.y = Math.sin(t * 0.08) * 0.012 * alive;
+
+    // Organic, slow, asymmetric breathing cycle (~7.2s period)
+    // Inhale is smooth and deep; exhale is slower and passive
+    const breathTime = t * 0.87;
+    const wavePrimary = Math.sin(breathTime);
+    const waveHarmonic = Math.sin(breathTime * 0.5 + 1.2) * 0.28;
+    const rawBreath = (wavePrimary + waveHarmonic) * 0.78;
+    const breathNorm = Math.pow(Math.max(0, rawBreath * 0.5 + 0.5), 1.3);
+
+    // Offering response: when material is landing/settling into Bappa,
+    // breathing enters a quiet, reverent hold for a moment of resonance
+    const hasRecentImpact = uniforms.current.uImpactCount.value > 0;
+    const resonanceDamp = hasRecentImpact ? 0.4 : 1.0;
+
+    // Awakening factor during Sthapana:
+    // 0 - 12.5s: 0 breathing (still physical clay emerging and settling)
+    // 12.5 - 14.0s: breathing gradually begins (eases from 0 to 1 over 1.5s)
+    // 14.0s+: full breathing
+    let awakenFactor = 1.0;
+    if (sthapana.isArriving) {
+      if (sthapana.elapsed < 12.5) {
+        awakenFactor = 0.0;
+      } else {
+        const w = Math.min(1, Math.max(0, (sthapana.elapsed - 12.5) / 1.5));
+        awakenFactor = w * w * (3 - 2 * w);
+      }
+    } else if (ritualState === 'PRE_STHAPANA') {
+      awakenFactor = 0.0;
+    }
+
+    // Peak expansion: ~0.0090 local units * 2.3046 = ~0.0207 world units (~20.7mm on chest/belly/ribs)
+    // Conspicuously perceptible when watching quietly for 5-10 seconds, while remaining a physical clay murti
+    const BREATH_SCALE = 0.0090;
+    uniforms.current.uBreath.value = breathNorm * BREATH_SCALE * alive * resonanceDamp * awakenFactor;
   });
 
   return (
-    <group ref={group} position={[0, BAPPA_CENTER.y - TARGET_HEIGHT * 0.5, 0]}>
+    <group
+      ref={group}
+      position={[0, BAPPA_CENTER.y - TARGET_HEIGHT * 0.5, 0]}
+      visible={getRitualState() === 'BAPPA_PRESENT'}
+    >
       {/* The asset is authored facing +X. This inner group turns it to
           face the camera and is kept separate from the outer group so the
           breathing rotation composes with it instead of fighting it. */}

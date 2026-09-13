@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { simplex3d } from '../shaders/noise.glsl';
 import { useScene } from '../state/sceneState';
 import { BAPPA_CENTER } from './GanpatiModel';
+import { getRitualState } from '../state/festival';
 import type { PerfProfile } from '../systems/perf';
 
 /**
@@ -146,8 +147,15 @@ export function SmokeSystem({ perf }: { perf: PerfProfile }) {
     // On a phone the camera stands back far enough that both ribbons sit
     // at the edges of the frame, where they read as vertical scratches.
     let target = 0.017;
-    if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') target = 0.022;
-    if (state === 'TRANSFORMING') target = 0.02;
+    const ritualState = getRitualState();
+    if (ritualState === 'PRE_STHAPANA') {
+      // Extremely soft incense-like haze wafting through the waiting room
+      target = 0.019;
+    } else if (state === 'CONTRIBUTING' || state === 'UNDERSTANDING') {
+      target = 0.022;
+    } else if (state === 'TRANSFORMING') {
+      target = 0.02;
+    }
     // A vighna thickens the air a little; a wish clears it.
     if (mood === 'VIGHNA') target += 0.008;
     if (mood === 'WISH') target -= 0.006;

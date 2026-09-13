@@ -6,6 +6,7 @@ import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocess
 import { BlendFunction } from 'postprocessing';
 
 import { GanpatiModel, type GanpatiHandle } from './components/GanpatiModel';
+import { Asana } from './components/Asana';
 import { LightingSystem } from './components/LightingSystem';
 import { AbsorptionLight } from './components/AbsorptionLight';
 import { CameraController } from './components/CameraController';
@@ -65,6 +66,7 @@ export function Scene({ perf, devStats = false }: { perf: PerfProfile; devStats?
           onGeometry={onGeometry}
         />
       </Suspense>
+      <Asana perf={perf} />
 
       <ParticleField perf={perf} handle={particles} ganpati={ganpati} />
       <SmokeSystem perf={perf} />

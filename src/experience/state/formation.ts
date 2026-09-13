@@ -31,11 +31,7 @@ import { useCollective, TARGET_OFFERINGS } from './collective';
  * settled clay to read as terracotta at all, and he becomes a cloud in
  * the shape of a murti rather than a murti being made.
  */
-const FLOOR = 0.3;
-
-/** Weights for the accelerated term. */
-const DAY_WEIGHT = 0.35;
-const OFFERING_WEIGHT = 0.75;
+const FLOOR = 0.60;
 
 export interface FormationInputs {
   /** 1..10 */
@@ -44,18 +40,10 @@ export interface FormationInputs {
 }
 
 export function formationFrom({ day, offerings }: FormationInputs): number {
-  // 0 on day one, 1 on day ten.
-  const byDay = Math.min(1, Math.max(0, (day - 1) / (FESTIVAL_DAYS - 1)));
+  const dayProgress = Math.min(1, Math.max(0, (day - 1) / (FESTIVAL_DAYS - 1)));
+  const offeringProgress = TARGET_OFFERINGS > 0 ? Math.min(1, Math.pow(Math.max(0, offerings) / TARGET_OFFERINGS, 0.55)) : 0;
 
-  // Front-loaded: against a target in the thousands a linear map would make
-  // one offering invisible, which would tell every early visitor they did
-  // not matter.
-  const byOfferings = Math.min(1, Math.pow(Math.max(0, offerings) / TARGET_OFFERINGS, 0.6));
-
-  // max() rather than a sum: the calendar is a floor the crowd can beat,
-  // not a quota they have to meet.
-  const progress = Math.min(1, Math.max(byDay, DAY_WEIGHT * byDay + OFFERING_WEIGHT * byOfferings));
-
+  const progress = Math.min(1, Math.max(dayProgress, offeringProgress));
   return FLOOR + (1 - FLOOR) * progress;
 }
 
@@ -89,8 +77,8 @@ export function getFormationOverride() {
 export function currentFormation(): number {
   if (override !== null) return override;
 
-  const { build, ready } = useCollective.getState();
-  if (ready) return build;
+  const { visualBuild, build, ready } = useCollective.getState();
+  if (ready) return visualBuild ?? build;
 
   const status = getFestivalStatus();
   if (status.phase === 'BEFORE') return FLOOR;

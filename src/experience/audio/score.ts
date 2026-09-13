@@ -84,6 +84,17 @@ export const SPACE = {
 } as const;
 
 /* ------------------------------------------------------------------ */
+/* Sthapana: the dedicated arrival music                              */
+/* ------------------------------------------------------------------ */
+
+export const STHAPANA = {
+  /** Dedicated Sthapana music level. */
+  musicDb: -14,
+  /** Crossfade duration when transitioning to normal BAPPA_PRESENT ambience at 14s. */
+  crossfadeTau: 2.0,
+} as const;
+
+/* ------------------------------------------------------------------ */
 /* offerings: the approach                                             */
 /* ------------------------------------------------------------------ */
 

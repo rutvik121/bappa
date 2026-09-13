@@ -103,6 +103,10 @@ export const ASSETS = {
   "shankh-final": {
     "kind": "oneshot",
     "channels": 2
+  },
+  "sthapana-music": {
+    "kind": "oneshot",
+    "channels": 2
   }
 } as const;
 

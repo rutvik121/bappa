@@ -9,6 +9,7 @@ import {
   setClockOffset,
   getClockOffset,
   FESTIVAL_START,
+  FESTIVAL_END,
   FESTIVAL_DAYS,
 } from '../state/festival';
 import { VISARJAN_DURATION, DARKNESS_HOLD } from '../components/DissolveController';
@@ -271,6 +272,26 @@ export function DevPanel() {
         </label>
         <div className="dev-btns">
           <button onClick={() => (setClockOffset(0), force((n) => n + 1))}>real</button>
+          <button
+            onClick={() => {
+              // 5 seconds before Sthapana: watch the live transition occur
+              setClockOffset(FESTIVAL_START.getTime() - 5000 - Date.now());
+              force((n) => n + 1);
+            }}
+            title="5s before Sthapana"
+          >
+            pre
+          </button>
+          <button
+            onClick={() => {
+              // Start of Sthapana arrival sequence
+              setClockOffset(FESTIVAL_START.getTime() - Date.now());
+              force((n) => n + 1);
+            }}
+            title="Exact Sthapana moment"
+          >
+            sthapana
+          </button>
           {[1, 5, 10].map((d) => (
             <button key={d} onClick={() => standAtDay(d)}>
               d{d}
@@ -278,23 +299,25 @@ export function DevPanel() {
           ))}
           <button
             onClick={() => {
-              // One minute out: the countdown's final wording, without
-              // waiting ten days to read it.
-              const end = FESTIVAL_START.getTime() + FESTIVAL_DAYS * DAY_MS;
-              setClockOffset(end - 60_000 - Date.now());
+              // Visarjan start
+              const end = FESTIVAL_END.getTime();
+              setClockOffset(end - Date.now());
               force((n) => n + 1);
             }}
+            title="Exact Visarjan moment"
           >
-            −1m
+            visarjan
           </button>
           <button
             onClick={() => {
-              const end = FESTIVAL_START.getTime() + FESTIVAL_DAYS * DAY_MS;
-              setClockOffset(end + 1000 - Date.now());
+              // Long after Visarjan has settled
+              const end = FESTIVAL_END.getTime();
+              setClockOffset(end + 120_000 - Date.now());
               force((n) => n + 1);
             }}
+            title="Settled post-Visarjan"
           >
-            ended
+            post
           </button>
         </div>
       </div>

@@ -35,6 +35,12 @@ export type ExperienceEvent =
   | 'OFFERING_CONTACT'
   /** He has taken it in. */
   | 'OFFERING_ABSORBED'
+  /** Sthapana arrival transition begins. */
+  | 'STHAPANA_STARTED'
+  /** Sthapana arrival completes at 14s. */
+  | 'STHAPANA_COMPLETE'
+  /** Dev/testing: returned to PRE_STHAPANA before Sthapana. */
+  | 'PRE_STHAPANA_RESTORED'
   | 'VISARJAN_STARTED'
   /** The first material has come away from him. */
   | 'VISARJAN_MATERIAL_RELEASE'

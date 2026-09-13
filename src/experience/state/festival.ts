@@ -1,5 +1,14 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import {
+  CANONICAL_STHAPANA,
+  CANONICAL_VISARJAN,
+  type RitualState,
+} from '../../shared/collective';
+
+export type { RitualState };
+
 /**
  * The festival window.
  *
@@ -10,13 +19,13 @@
  */
 
 /**
- * Ganesh Chaturthi. Override in the environment with the exact muhurat
- * for the year you are running -- this default is a placeholder, not an
- * authority on the date.
- *
- *   NEXT_PUBLIC_BAPPA_START=2026-09-14T06:00:00+05:30
+ * Ganesh Chaturthi authoritative Sthapana: September 14, 2026 at 11:16 AM IST
  */
-const DEFAULT_START = '2026-09-14T06:00:00+05:30';
+const DEFAULT_START = CANONICAL_STHAPANA;
+/**
+ * Authoritative Visarjan: September 25, 2026 at 18:00 IST
+ */
+const DEFAULT_END = CANONICAL_VISARJAN;
 
 export const FESTIVAL_DAYS = 10;
 
@@ -27,14 +36,10 @@ export const FESTIVAL_START = new Date(
   process.env.NEXT_PUBLIC_BAPPA_START ?? DEFAULT_START
 );
 
-export const FESTIVAL_END = new Date(FESTIVAL_START.getTime() + FESTIVAL_DAYS * DAY_MS);
+export const FESTIVAL_END = new Date(
+  process.env.NEXT_PUBLIC_BAPPA_END ?? DEFAULT_END
+);
 
-/**
- * The moment he goes. Identical to the end of the window by definition --
- * named separately because that is what it *means*, and because every
- * countdown in the interface should point at this rather than re-deriving
- * a date of its own.
- */
 export const VISARJAN_TIME = FESTIVAL_END;
 
 export type FestivalPhase =
@@ -92,6 +97,126 @@ export function setServerTime(serverNow: number) {
 /** The clock everything in the piece reads. */
 export function festivalClock() {
   return Date.now() + serverSkew + clockOffset;
+}
+
+/**
+ * Authoritative ritual lifecycle calculation.
+ * Exactly three states: PRE_STHAPANA, BAPPA_PRESENT, POST_VISARJAN.
+ */
+export function getRitualState(now = festivalClock()): RitualState {
+  const start = FESTIVAL_START.getTime();
+  const end = FESTIVAL_END.getTime();
+
+  if (now < start) return 'PRE_STHAPANA';
+  if (now < end) return 'BAPPA_PRESENT';
+  return 'POST_VISARJAN';
+}
+
+/**
+ * Sthapana arrival duration: 14 seconds.
+ * 0.0 - 2.5s: Anticipation — empty asana, quiet stillness
+ * 2.5 - 9.5s: Emergence — Bappa forms toward 0.60
+ * 9.5 - 12.5s: Settling — Bappa settles onto the asana
+ * 12.5 - 14.0s: Awakening — breathing gradually begins
+ * 14.0s+: Complete — normal BAPPA_PRESENT UI & offering interaction
+ */
+export const STHAPANA_DURATION = 14;
+
+export type SthapanaPhase =
+  | 'idle'
+  | 'anticipation'
+  | 'emergence'
+  | 'settling'
+  | 'awakening'
+  | 'complete';
+
+export interface SthapanaArrival {
+  isArriving: boolean;
+  isCompleted: boolean;
+  elapsed: number;
+  progress: number;
+  phase: SthapanaPhase;
+}
+
+export function getSthapanaArrival(now = festivalClock()): SthapanaArrival {
+  const start = FESTIVAL_START.getTime();
+  if (now < start) {
+    return {
+      isArriving: false,
+      isCompleted: false,
+      elapsed: 0,
+      progress: 0,
+      phase: 'idle',
+    };
+  }
+
+  const elapsed = (now - start) / 1000;
+  if (elapsed >= STHAPANA_DURATION) {
+    return {
+      isArriving: false,
+      isCompleted: true,
+      elapsed: STHAPANA_DURATION,
+      progress: 1,
+      phase: 'complete',
+    };
+  }
+
+  let phase: SthapanaPhase = 'anticipation';
+  if (elapsed < 2.5) {
+    phase = 'anticipation';
+  } else if (elapsed < 9.5) {
+    phase = 'emergence';
+  } else if (elapsed < 12.5) {
+    phase = 'settling';
+  } else {
+    phase = 'awakening';
+  }
+
+  return {
+    isArriving: true,
+    isCompleted: false,
+    elapsed,
+    progress: Math.min(1, Math.max(0, elapsed / STHAPANA_DURATION)),
+    phase,
+  };
+}
+
+/**
+ * React hook providing reactive lifecycle state that automatically
+ * updates live as time crosses Sthapana or Visarjan boundaries.
+ */
+export function useRitualState(): RitualState {
+  const [state, setState] = useState<RitualState>(() => getRitualState());
+
+  useEffect(() => {
+    const check = () => {
+      const current = getRitualState();
+      setState((prev) => (prev !== current ? current : prev));
+    };
+    check();
+    const id = setInterval(check, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  return state;
+}
+
+/**
+ * React hook providing reactive Sthapana arrival progress.
+ */
+export function useSthapanaArrival(): SthapanaArrival {
+  const [arrival, setArrival] = useState<SthapanaArrival>(() => getSthapanaArrival());
+
+  useEffect(() => {
+    const check = () => {
+      setArrival(getSthapanaArrival());
+    };
+    check();
+    const id = setInterval(check, 100);
+    return () => clearInterval(id);
+  }, []);
+
+  return arrival;
 }
 
 export function getFestivalStatus(now = festivalClock()): FestivalStatus {
@@ -154,18 +279,14 @@ export function describeTime(
   countdown: Countdown,
   now = Date.now() + clockOffset
 ): TimeCopy {
-  // Before Chaturthi he is still in the workshop, being made -- which is
-  // why he can already be seen, and why offerings already shape him.
-  if (status.phase === 'BEFORE') {
-    const days = Math.max(1, Math.ceil((FESTIVAL_START.getTime() - now) / DAY_MS));
-    return {
-      count: days === 1 ? 'Ganesh Chaturthi is tomorrow' : `Ganesh Chaturthi in ${days} days`,
-      phase: '10 days. Then Visarjan.',
-    };
+  const ritual = getRitualState(now);
+
+  if (ritual === 'PRE_STHAPANA') {
+    return { count: null, phase: '' };
   }
 
-  if (status.phase === 'ENDED' || countdown.over) {
-    return { count: null, phase: 'Today, we let him go.' };
+  if (ritual === 'POST_VISARJAN' || status.phase === 'ENDED' || countdown.over) {
+    return { count: null, phase: '' };
   }
 
   const daysLeft = Math.ceil(status.msRemaining / DAY_MS);
@@ -182,7 +303,7 @@ export function describeTime(
   // "Remain" alone left a first-time visitor asking: remain until what?
   return {
     count: `${daysLeft} days until Visarjan`,
-    phase: status.day <= 1 ? 'He’s only beginning.' : 'He’s taking shape.',
+    phase: 'He’s taking shape.',
   };
 }
 

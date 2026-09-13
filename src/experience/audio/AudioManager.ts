@@ -15,11 +15,13 @@ import {
   OFFERING,
   RECEIVE,
   SPACE,
+  STHAPANA,
   VISARJAN,
   dB,
   sample,
   type OfferingSound,
 } from './score';
+import { getRitualState, getSthapanaArrival } from '../state/festival';
 
 /**
  * The room, and every sound made in it.
@@ -327,6 +329,7 @@ export class AudioManager {
 
   private music: Layer | null = null;
   private pandal: Layer | null = null;
+  private sthapanaVoice: Voice | null = null;
   private nextWander = 0;
 
   private offering: Offering | null = null;
@@ -464,7 +467,7 @@ export class AudioManager {
     this.build();
     this.prefetch();
     // The room first -- arriving should never wait on a procession.
-    void this.decode(['bhakti-ambience', 'pandal-night', 'temple-ghanta']).then(() => {
+    void this.decode(['bhakti-ambience', 'pandal-night', 'temple-ghanta', 'sthapana-music']).then(() => {
       if (this.phase === 'room') this.playAmbient();
       return this.decode(ORDER);
     });
@@ -609,7 +612,18 @@ export class AudioManager {
     const live = this.live;
     if (!live) return;
     if (document.hidden) void live.suspend().catch(() => {});
-    else if (this.phase !== 'gone') void live.resume().catch(() => {});
+    else if (this.phase !== 'gone') {
+      void live.resume().catch(() => {});
+      if (this.phase === 'room') {
+        const ritual = this.clock ? 'BAPPA_PRESENT' : getRitualState();
+        if (ritual === 'BAPPA_PRESENT' && !this.music && !this.sthapanaVoice) {
+          this.playAmbient(true);
+        } else if (ritual === 'PRE_STHAPANA' && this.music) {
+          this.music.stop(this.now(), 0.4);
+          this.music = null;
+        }
+      }
+    }
   };
 
   /* ---------------- status and controls ---------------- */
@@ -670,6 +684,15 @@ export class AudioManager {
     if (now - this.lastTick < 0.025) return;
     this.lastTick = now;
 
+    // Safety: ensure daily music never plays during PRE_STHAPANA or POST_VISARJAN
+    if (!this.clock) {
+      const ritual = getRitualState();
+      if ((ritual === 'PRE_STHAPANA' || ritual === 'POST_VISARJAN') && this.music) {
+        this.music.stop(now, 0.4);
+        this.music = null;
+      }
+    }
+
     if (this.phase === 'room' && this.pandal && now >= this.nextWander) {
       this.pandal.gain(dB(SPACE.pandalDb + between(-SPACE.wanderDb, SPACE.wanderDb * 0.5)), now, 3);
       this.nextWander = now + between(SPACE.wanderGap[0], SPACE.wanderGap[1]);
@@ -692,6 +715,12 @@ export class AudioManager {
     if (!this.ctx || !this.buses) return;
 
     switch (event) {
+      case 'STHAPANA_STARTED':
+        return this.playSthapanaStart();
+      case 'STHAPANA_COMPLETE':
+        return this.playSthapanaComplete();
+      case 'PRE_STHAPANA_RESTORED':
+        return this.playPreSthapana();
       case 'SPACE_SHIFT':
         return this.spaceShift(p.amount ?? 1);
       case 'OFFERING_STARTED':
@@ -733,28 +762,135 @@ export class AudioManager {
   /**
    * The room. From silence: the pandal outside first, the tanpura and
    * bansuri a moment later, and then one distant ghanta.
+   *
+   * In PRE_STHAPANA: ONLY the quiet pandal-night pre-arrival atmosphere.
+   * Daily BAPPA_PRESENT music (bhakti-ambience) and temple-ghanta welcome
+   * bell must NOT play until Bappa arrives.
    */
   playAmbient(settled = false): void {
-    if (!this.ctx || !this.buses || this.music || this.phase !== 'room') return;
+    if (!this.ctx || !this.buses || this.phase !== 'room') return;
+    const now = this.now();
+    const ritual = this.clock ? 'BAPPA_PRESENT' : getRitualState();
+
+    if (ritual === 'POST_VISARJAN') return;
+
+    // If Sthapana arrival is currently happening, play Sthapana music instead of bhakti-ambience
+    const arrival = getSthapanaArrival();
+    if (arrival.isArriving) {
+      this.playSthapanaStart();
+      return;
+    }
+
+    // Pandal night atmosphere: always present in the room (quiet pre-arrival in PRE_STHAPANA,
+    // and subtle pandal ambience in BAPPA_PRESENT).
+    if (!this.pandal) {
+      this.pandal = this.layer('pandal-night', 'room', now, { cutoff: 12000, wet: 0.05 });
+      this.pandal?.gain(dB(SPACE.pandalDb), now + (settled ? 0 : SPACE.pandalDelay), settled ? 0.01 : SPACE.pandalTau);
+      this.nextWander = now + 8;
+    }
+
+    // PRE_STHAPANA: ONLY the quiet pre-arrival atmosphere.
+    // The daily BAPPA_PRESENT background music must NOT play.
+    // No bansuri / bhakti ambience / daily Bappa music.
+    // No temple-ghanta welcome bell.
+    if (ritual === 'PRE_STHAPANA') {
+      if (this.music) {
+        this.music.stop(now, 0.4);
+        this.music = null;
+      }
+      return;
+    }
+
+    // BAPPA_PRESENT: Start daily bhakti ambience (flute/tanpura) and welcome ghanta
+    if (!this.music && !this.sthapanaVoice) {
+      this.music = this.layer('bhakti-ambience', 'room', now, { cutoff: 16000, wet: 0.12, randomStart: false });
+      this.music?.gain(dB(SPACE.musicDb), now + (settled ? 0 : SPACE.musicDelay), settled ? 0.01 : SPACE.musicTau);
+
+      if (!settled) {
+        this.shot('temple-ghanta', now + SPACE.welcomeAt, {
+          db: SPACE.welcomeDb,
+          bus: 'room',
+          cutoff: 2500,
+          wet: 0.5,
+          pan: 0.1,
+        });
+      }
+    }
+  }
+
+  /* ---------------- STHAPANA: the arrival ---------------- */
+
+  /**
+   * Sthapana arrival music: plays dedicated 14-second arrival track once.
+   * Stops any normal bhakti-ambience so Sthapana music plays unaccompanied by flute/tanpura.
+   * Pandal night ambience remains subtle in the background without duplicate layers.
+   */
+  playSthapanaStart(): void {
+    if (!this.ctx || !this.buses || this.phase !== 'room') return;
+    if (this.sthapanaVoice) return;
     const now = this.now();
 
-    // Music starts at the top of the piece, not mid-phrase.
-    this.music = this.layer('bhakti-ambience', 'room', now, { cutoff: 16000, wet: 0.12, randomStart: false });
-    this.pandal = this.layer('pandal-night', 'room', now, { cutoff: 12000, wet: 0.05 });
-
-    this.music?.gain(dB(SPACE.musicDb), now + (settled ? 0 : SPACE.musicDelay), settled ? 0.01 : SPACE.musicTau);
-    this.pandal?.gain(dB(SPACE.pandalDb), now + (settled ? 0 : SPACE.pandalDelay), settled ? 0.01 : SPACE.pandalTau);
-
-    if (!settled) {
-      this.shot('temple-ghanta', now + SPACE.welcomeAt, {
-        db: SPACE.welcomeDb,
-        bus: 'room',
-        cutoff: 2500,
-        wet: 0.5,
-        pan: 0.1,
-      });
+    // 1. Stop normal bhakti ambience if it was playing
+    if (this.music) {
+      this.music.stop(now, 0.4);
+      this.music = null;
     }
-    this.nextWander = now + 8;
+
+    // 2. Ensure pandal night room atmosphere is present (transitions pre-existing or starts fresh)
+    if (!this.pandal) {
+      this.pandal = this.layer('pandal-night', 'room', now, { cutoff: 12000, wet: 0.05 });
+      this.pandal?.gain(dB(SPACE.pandalDb), now, 0.5);
+    }
+
+    // 3. Play sthapana track once on the room bus (routed through master + muteGain)
+    this.sthapanaVoice = this.shot('sthapana-music', now, {
+      db: STHAPANA.musicDb,
+      bus: 'room',
+      wet: 0.12,
+    });
+  }
+
+  /**
+   * Transition cleanly from Sthapana music into normal BAPPA_PRESENT bhakti ambience at 14s.
+   */
+  playSthapanaComplete(): void {
+    if (!this.ctx || !this.buses || this.phase !== 'room') return;
+    const now = this.now();
+    const ritual = this.clock ? 'BAPPA_PRESENT' : getRitualState();
+
+    // 1. Crossfade out sthapana voice over crossfadeTau
+    if (this.sthapanaVoice) {
+      this.sthapanaVoice.stop(now, STHAPANA.crossfadeTau);
+      this.sthapanaVoice = null;
+    }
+
+    // 2. Crossfade in bhakti-ambience only if we are in BAPPA_PRESENT
+    if (ritual === 'BAPPA_PRESENT' && !this.music) {
+      this.music = this.layer('bhakti-ambience', 'room', now, { cutoff: 16000, wet: 0.12, randomStart: false });
+      this.music?.gain(dB(SPACE.musicDb), now, STHAPANA.crossfadeTau);
+    }
+  }
+
+  /**
+   * PRE_STHAPANA: Restores quiet pre-arrival atmosphere and silences any daily Bappa music.
+   */
+  playPreSthapana(): void {
+    if (!this.ctx || !this.buses || this.phase !== 'room') return;
+    const now = this.now();
+
+    if (this.music) {
+      this.music.stop(now, 0.4);
+      this.music = null;
+    }
+    if (this.sthapanaVoice) {
+      this.sthapanaVoice.stop(now, 0.2);
+      this.sthapanaVoice = null;
+    }
+    if (!this.pandal) {
+      this.pandal = this.layer('pandal-night', 'room', now, { cutoff: 12000, wet: 0.05 });
+      this.pandal?.gain(dB(SPACE.pandalDb), now, 0.5);
+      this.nextWander = now + 8;
+    }
   }
 
   /** The pandal breathes in as the camera moves through the space. */
@@ -1041,8 +1177,10 @@ export class AudioManager {
     this.resonance = null;
     this.music?.stop(end, 0.01);
     this.pandal?.stop(end, 0.01);
+    this.sthapanaVoice?.stop(end, 0.01);
     this.music = null;
     this.pandal = null;
+    this.sthapanaVoice = null;
     const v = this.visarjan;
     v?.dhol?.stop(end, 0.01);
     v?.crumble?.stop(end, 0.01);
@@ -1086,6 +1224,8 @@ export class AudioManager {
     this.visarjan = null;
     this.pandal?.stop(now, 0.5);
     this.pandal = null;
+    this.sthapanaVoice?.stop(now, 0.2);
+    this.sthapanaVoice = null;
     if (this.live && this.live.state !== 'running') void this.live.resume().catch(() => {});
     this.playAmbient();
   }

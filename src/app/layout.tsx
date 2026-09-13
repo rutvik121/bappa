@@ -23,9 +23,33 @@ const sans = Hanken_Grotesk({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://bappa.live'),
   title: 'BAPPA 2026 — Leave something with Bappa',
   description:
-    'A wish. A gratitude. A burden. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+    'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+  openGraph: {
+    title: 'BAPPA 2026 — Leave something with Bappa',
+    description:
+      'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+    type: 'website',
+    images: [{ url: '/icon.png', width: 512, height: 512, alt: 'BAPPA 2026' }],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'BAPPA 2026 — Leave something with Bappa',
+    description:
+      'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+    images: ['/icon.png'],
+  },
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon.png', type: 'image/png', sizes: '512x512' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
+  },
 };
 
 export const viewport: Viewport = {

@@ -46,31 +46,10 @@ function PerfWatchdog({ onDegrade }: { onDegrade: (p: PerfProfile) => void }) {
 }
 
 /**
- * Stops the render loop once nothing is left to render.
- *
- * After Visarjan completes every system is at zero and the frame is
- * black, so continuing to redraw it sixty times a second is pure battery
- * cost through the closing words -- which are plain DOM and need no
- * canvas at all.
- *
- * Left running when the development panel is enabled, or scrubbing back
- * through the timeline would find a frozen canvas.
+ * In POST_VISARJAN, the empty asana remains grounded and visible in the settled room light.
+ * The canvas remains active and continues to render.
  */
 function LoopStopper() {
-  const setFrameloop = useThree((s) => s.setFrameloop);
-  const stopped = useRef(false);
-
-  useFrame(() => {
-    if (stopped.current || devToolsEnabled()) return;
-    const { state, elapsed } = useScene.getState();
-    // A second past the start of the closing words, so the sound director
-    // has certainly heard that moment before the frames stop.
-    if (state === 'VISARJAN' && elapsed >= VISARJAN_DURATION + DARKNESS_HOLD + 1) {
-      stopped.current = true;
-      setFrameloop('never');
-    }
-  });
-
   return null;
 }
 

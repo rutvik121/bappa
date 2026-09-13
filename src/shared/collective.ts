@@ -48,6 +48,13 @@ export interface OfferingEvent {
   formationTarget: number;
 }
 
+export type RitualState = 'PRE_STHAPANA' | 'BAPPA_PRESENT' | 'POST_VISARJAN';
+
+/** Authoritative Sthapana: September 14, 2026 at 11:16 AM IST */
+export const CANONICAL_STHAPANA = '2026-09-14T11:16:00+05:30';
+/** Authoritative Visarjan: September 25, 2026 at 18:00 (6:00 PM) IST */
+export const CANONICAL_VISARJAN = '2026-09-25T18:00:00+05:30';
+
 export type CollectiveEvent =
   | {
       kind: 'OFFERING_RECEIVED';
@@ -68,6 +75,7 @@ export type CollectiveEvent =
 /** What a client is handed when it arrives, and whenever it resynchronises. */
 export interface BappaSnapshot {
   lifecycle: string;
+  ritualState: RitualState;
   festivalDay: number;
   offeringsCount: number;
   /** 0..1, computed by the server. The client never derives this. */
@@ -100,24 +108,20 @@ export interface BappaSnapshot {
  * Where he starts: begun, not finished. Mirrors the client's own floor --
  * see state/formation.ts for why it is not lower.
  */
-export const FORMATION_FLOOR = 0.3;
-
-const DAY_WEIGHT = 0.35;
-const OFFERING_WEIGHT = 0.75;
+export const FORMATION_FLOOR = 0.60;
 
 /**
  * How completely he has formed, 0..1.
  *
  * The calendar guarantees he is whole by the last day; the offerings get
- * him there sooner and fuller in the meantime. `max` rather than a sum,
- * so the calendar is a floor the crowd can beat and never a quota they
- * have to meet.
+ * him there sooner and fuller in the meantime. Each accepted offering
+ * permanently advances formation progress. At target offerings, Bappa
+ * reaches full completion.
+ *
+ * Invariant: formationProgress = max(calendarBaseline, offeringProgress)
  *
  * Pure and shared on purpose: this is the function that has to give every
- * browser the same Bappa from the same tally. The server is still the one
- * that evaluates it for real -- clients are handed the answer -- but
- * keeping one definition means a client that computes it (the development
- * panel does, to preview a day) cannot drift from the truth.
+ * browser the same Bappa from the same tally.
  */
 export function formationFrom(
   day: number,
@@ -125,14 +129,10 @@ export function formationFrom(
   target: number,
   days: number
 ): number {
-  const byDay = clamp01((day - 1) / Math.max(1, days - 1));
+  const dayProgress = clamp01((day - 1) / Math.max(1, days - 1));
+  const offeringProgress = target > 0 ? clamp01(Math.pow(Math.max(0, offerings) / target, 0.55)) : 0;
 
-  // Front-loaded: against a target in the thousands a linear map would
-  // make one offering invisible, which would tell every early visitor
-  // that they did not matter.
-  const byOfferings = Math.min(1, Math.pow(Math.max(0, offerings) / target, 0.6));
-
-  const progress = Math.min(1, Math.max(byDay, DAY_WEIGHT * byDay + OFFERING_WEIGHT * byOfferings));
+  const progress = Math.min(1, Math.max(dayProgress, offeringProgress));
   return FORMATION_FLOOR + (1 - FORMATION_FLOOR) * progress;
 }
 

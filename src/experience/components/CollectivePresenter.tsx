@@ -47,12 +47,26 @@ export function CollectivePresenter({
 }) {
   const busy = useRef(0);
   const gap = useRef(0);
+  const targetBuild = useRef<number | null>(null);
+  const targetApplied = useRef(false);
 
   useFrame((_, rawDt) => {
     const dt = Math.min(rawDt, 1 / 20);
 
     if (busy.current > 0) {
       busy.current -= dt;
+
+      // Material travels ~1.8-2.2s before striking the frontier.
+      // Advance visual formation as the material lands and sinks into the clay:
+      if (!targetApplied.current && busy.current <= PRESENT_FOR - 2.0 && targetBuild.current !== null) {
+        targetApplied.current = true;
+        useCollective.getState().advanceVisualFormation(targetBuild.current);
+      }
+
+      if (busy.current <= 0 && targetBuild.current !== null) {
+        useCollective.getState().advanceVisualFormation(targetBuild.current);
+        targetBuild.current = null;
+      }
       return;
     }
     if (gap.current > 0) {
@@ -69,8 +83,17 @@ export function CollectivePresenter({
     const system = particles.current.system;
     if (!system) return;
 
+    const queueLength = useCollective.getState().queue.length;
+    // If a massive burst arrived, catch up smoothly so Bappa reflects the collective state:
+    if (queueLength > 15) {
+      useCollective.getState().advanceVisualFormation(useCollective.getState().build);
+    }
+
     const next = useCollective.getState().takeNext();
     if (!next) return;
+
+    targetBuild.current = next.formationTarget;
+    targetApplied.current = false;
 
     const budget = Math.floor(perf.offeringParticles * SHARE);
     system.spawnFormation(
@@ -87,8 +110,10 @@ export function CollectivePresenter({
     // go on the same frame and simply travels.
     system.releaseFormation();
 
-    busy.current = PRESENT_FOR;
-    gap.current = BETWEEN;
+    const pace = queueLength > 6 ? 4.0 : PRESENT_FOR;
+    const between = queueLength > 6 ? 0.8 : BETWEEN;
+    busy.current = pace;
+    gap.current = between;
   });
 
   return null;

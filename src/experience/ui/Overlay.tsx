@@ -10,12 +10,15 @@ import {
   getFestivalStatus,
   getCountdown,
   describeTime,
+  useRitualState,
+  useSthapanaArrival,
+  festivalClock,
+  FESTIVAL_END,
   type Countdown,
 } from '../state/festival';
 import { FAREWELL_LINES, FAREWELL_OUT_MS } from './farewell';
 import { OFFERINGS, OfferingMark, offeringFor } from './offerings';
 import { Masthead } from './Masthead';
-import { ShareCard } from './ShareCard';
 
 /**
  * The entire interface.
@@ -68,17 +71,17 @@ export function Overlay({ ready }: { ready: boolean }) {
    * Unmounted rather than faded, so it is a certainty and not an animation.
    */
   const [uiGone, setUiGone] = useState(false);
-  /**
-   * Whether they have been offered something to keep. Set a few seconds
-   * into the closing line so it never lands on top of the moment, and
-   * deliberately not cleared when he settles: it waits quietly until they
-   * leave, rather than being snatched away on a timer.
-   */
-  const [keepOffered, setKeepOffered] = useState(false);
+  type ReflectionPhase =
+    | 'absorption'
+    | 'stillness'
+    | 'whisper';
+  const [reflectionPhase, setReflectionPhase] = useState<ReflectionPhase>('absorption');
 
   const [step, setStep] = useState<Step>('choose');
   const [sound, setSound] = useState<SoundStatus>('off');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const ritualState = useRitualState();
+  const sthapana = useSthapanaArrival();
 
   // The server-rendered prelude hands over in the same frame the live
   // interface becomes visible, in the same place, so nothing blinks.
@@ -152,7 +155,12 @@ export function Overlay({ ready }: { ready: boolean }) {
    * gets the dark and the last words, never a Bappa who came back.
    */
   useEffect(() => {
-    if (lifecycle !== 'VISARJAN' && lifecycle !== 'COMPLETED') return;
+    const isVisarjanTime =
+      lifecycle === 'VISARJAN' ||
+      lifecycle === 'COMPLETED' ||
+      ritualState === 'POST_VISARJAN';
+
+    if (!isVisarjanTime) return;
 
     const scene = useScene.getState();
     if (scene.state === 'VISARJAN') return;
@@ -161,7 +169,9 @@ export function Overlay({ ready }: { ready: boolean }) {
     if (scene.state !== 'IDLE' && scene.state !== 'COMPLETE') return;
 
     const snap = useCollective.getState().snapshot;
-    const into = snap ? (snap.now - snap.endsAt) / 1000 : Infinity;
+    const now = festivalClock();
+    const end = snap ? snap.endsAt : FESTIVAL_END.getTime();
+    const into = (now - end) / 1000;
     const over = VISARJAN_DURATION + DARKNESS_HOLD;
 
     scene.setState('VISARJAN');
@@ -179,7 +189,7 @@ export function Overlay({ ready }: { ready: boolean }) {
       // It is beginning now. They see it from the first grain, and hear it.
       audio().init();
     }
-  }, [lifecycle]);
+  }, [lifecycle, ritualState]);
 
   // The words wait for the darkness to have been empty for a moment.
   useEffect(() => {
@@ -192,7 +202,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     setLeft(hasLeftSomething());
     const clear = setTimeout(() => setUiGone(true), 1500);
     const id = setInterval(() => {
-      if (useScene.getState().elapsed >= VISARJAN_DURATION + DARKNESS_HOLD) setFarewellIn(true);
+      if (useScene.getState().elapsed >= VISARJAN_DURATION) setFarewellIn(true);
     }, 300);
     return () => {
       clearInterval(id);
@@ -219,17 +229,23 @@ export function Overlay({ ready }: { ready: boolean }) {
     }
   }, [state, setDraft]);
 
-  // The line lands, and is left alone. Only after it has been sitting
-  // there a while is anything else offered.
+  // Absorption, quiet stillness, and the gentle whisper.
   useEffect(() => {
-    if (state === 'COMPLETE') {
-      const t = setTimeout(() => setKeepOffered(true), 5200);
-      return () => clearTimeout(t);
+    if (state !== 'COMPLETE') {
+      setReflectionPhase('absorption');
+      return undefined;
     }
-    // Gone the moment he starts to leave, like everything else.
-    if (state === 'VISARJAN' || state === 'CONTRIBUTING') setKeepOffered(false);
-    return undefined;
-  }, [state]);
+
+    const t1 = setTimeout(() => setReflectionPhase('stillness'), 3800);
+    const t2 = setTimeout(() => setReflectionPhase('whisper'), 8000);
+    const t3 = setTimeout(() => setState('IDLE'), 12200);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [state, setState]);
 
   // A beat before focus, so the keyboard does not race the push-in.
   useEffect(() => {
@@ -238,20 +254,21 @@ export function Overlay({ ready }: { ready: boolean }) {
     return () => clearTimeout(t);
   }, [state, step]);
 
-  // Escape steps back one gesture at a time.
+  // Escape steps back one gesture at a time, or dismisses contemplation.
   useEffect(() => {
-    if (state !== 'CONTRIBUTING') return undefined;
+    if (state !== 'CONTRIBUTING' && state !== 'COMPLETE') return undefined;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (step === 'write') back();
+      if (state === 'COMPLETE') setState('IDLE');
+      else if (step === 'write') back();
       else leave();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  });
+  }, [state, step, setState]);
 
   const begin = () => {
-    if (!arrived) return;
+    if (!arrived || ritualState !== 'BAPPA_PRESENT') return;
     audio().init();
     setMood(null);
     setStep('choose');
@@ -291,7 +308,7 @@ export function Overlay({ ready }: { ready: boolean }) {
             : 'offering';
 
   const time = describeTime(festival, countdown);
-  const farewell = FAREWELL_LINES.filter((l) => !('onlyIfLeft' in l) || left);
+  const farewell = FAREWELL_LINES;
 
   return (
     <div className={`overlay ${ready ? 'is-ready' : ''}`} data-scene={scene}>
@@ -324,7 +341,7 @@ export function Overlay({ ready }: { ready: boolean }) {
           {/* The one control that belongs in the middle. It opens the
               ritual, and the ritual happens in the centre -- so it stands
               under him rather than out at an edge with the information. */}
-          {!failed && (
+          {!failed && ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving && (
             <div className={`layer layer--enter ${scene === 'idle' ? 'in' : ''}`}>
               <button
                 className={`rite ${arrived ? '' : 'is-waiting'}`}
@@ -332,7 +349,7 @@ export function Overlay({ ready }: { ready: boolean }) {
                 tabIndex={arrived ? 0 : -1}
                 aria-hidden={!arrived}
               >
-                Make an offering
+                Leave something
               </button>
             </div>
           )}
@@ -359,15 +376,17 @@ export function Overlay({ ready }: { ready: boolean }) {
 
             {!failed && (
               <>
-                <p className="time">
-                  {time.count && <span className="time-count">{time.count}</span>}
-                  <span className="time-phase">{time.phase}</span>
-                </p>
+                {(time.count || time.phase) && (
+                  <p className="time">
+                    {time.count && <span className="time-count">{time.count}</span>}
+                    {time.phase && <span className="time-phase">{time.phase}</span>}
+                  </p>
+                )}
 
-                {collectiveReady && count > 0 && (
+                {ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving && collectiveReady && count > 0 && (
                   <p className="tally">
                     {count.toLocaleString('en-IN')}{' '}
-                    {count === 1 ? 'offering has' : 'offerings have'} become part of Bappa.
+                    {count === 1 ? 'person has' : 'people have'} left something with him.
                   </p>
                 )}
               </>
@@ -378,9 +397,9 @@ export function Overlay({ ready }: { ready: boolean }) {
           {/* ---------------- CHOICE ---------------- */}
           <section
             className={`layer layer--choose ${scene === 'choose' ? 'in' : ''}`}
-            aria-label="Choose an offering"
+            aria-label="Choose what to leave"
           >
-            <h2 className="ask">What will you leave with him?</h2>
+            <h2 className="ask">What would you like to leave with me?</h2>
 
             <ul className="doors">
               {OFFERINGS.map((o) => (
@@ -410,7 +429,7 @@ export function Overlay({ ready }: { ready: boolean }) {
             </button>
 
             <label className="prompt" htmlFor="offering-text">
-              {active.prompt}
+              Tell me.
             </label>
 
             <textarea
@@ -430,31 +449,33 @@ export function Overlay({ ready }: { ready: boolean }) {
               }}
             />
 
-            {/* What happens to the words, in one breath: no one reads
-                them, nothing keeps them, and they become part of him. */}
-            <p className="note">No one else will ever read this. It becomes part of him.</p>
+            {/* Private reassurance */}
+            <p className="note">This stays between you and me.</p>
 
             <button className="rite rite--offer" onClick={offer} disabled={!draft.trim()}>
               {active.offer}
             </button>
           </section>
 
-          {/* ---------------- EMOTIONAL RESPONSE ---------------- */}
-          <div className={`layer layer--closing ${scene === 'complete' ? 'in' : ''}`} aria-live="polite">
-            {scene === 'complete' && (
-              <p className="closing-line" key={type}>
-                {offeringFor(type).closing}
+          {/* ---------------- CONTEMPLATION & ABSORPTION ---------------- */}
+          <div
+            className={`layer layer--closing ${scene === 'complete' ? 'in' : ''}`}
+            aria-live="polite"
+            onClick={() => {
+              if (scene === 'complete') setState('IDLE');
+            }}
+          >
+            {scene === 'complete' && reflectionPhase === 'absorption' && (
+              <p className="closing-line">
+                It becomes part of me.
               </p>
             )}
-          </div>
 
-          {/* Something to keep, offered late and quietly. The line has to
-              land first and be allowed to sit there -- an invitation to
-              share arriving on top of it would make the moment a prompt.
-              It outlives the closing state on purpose: once he is still
-              again it is still there, until they go. */}
-          <div className={`layer layer--keep ${keepOffered ? 'in' : ''}`}>
-            <ShareCard type={type} count={count} />
+            {scene === 'complete' && reflectionPhase === 'whisper' && (
+              <p className="reflection-whisper">
+                If someone comes to mind, bring them.
+              </p>
+            )}
           </div>
         </>
       )}

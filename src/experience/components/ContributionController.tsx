@@ -4,7 +4,7 @@ import { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useScene } from '../state/sceneState';
-import { submitOffering } from '../state/collective';
+import { submitOffering, useCollective } from '../state/collective';
 import { devTimeScale } from '../dev/devtools';
 import { sampleTextPoints } from '../systems/TextSampler';
 import { BAPPA_CENTER } from './GanpatiModel';
@@ -36,7 +36,7 @@ export const DURATION = {
    */
   TRANSFORMING: 16,
   /** The closing line arrives, holds, and leaves; then the room is at rest. */
-  COMPLETE: 11,
+  COMPLETE: 20.5,
 } as const;
 
 /** How long the particles hold the shape of the text before letting go. */
@@ -115,6 +115,7 @@ interface Props {
 export function ContributionController({ perf, particles }: Props) {
   const { camera, size } = useThree();
   const emitted = useRef(false);
+  const advancedFormation = useRef(false);
   const peak = useRef(0);
   const takenInAt = useRef(-1);
 
@@ -134,6 +135,7 @@ export function ContributionController({ perf, particles }: Props) {
         // for a beat, and only then does the material appear.
         if (!emitted.current && elapsed >= STILLNESS_BEFORE) {
           emitted.current = true;
+          advancedFormation.current = false;
 
           const system = particles.current.system;
           const budget = Math.floor(perf.offeringParticles * 0.85);
@@ -207,6 +209,13 @@ export function ContributionController({ perf, particles }: Props) {
         // seconds of nothing between the last grain and the closing line.
         const tel = particles.current.system?.telemetry;
         if (tel) {
+          // The moment offering material strikes the frontier and begins settling,
+          // the clay begins forming under it:
+          if (!advancedFormation.current && (tel.arrived > 0 || tel.settling > 0)) {
+            advancedFormation.current = true;
+            useCollective.getState().advanceVisualFormation(useCollective.getState().build);
+          }
+
           const live = tel.journey + tel.settling;
           peak.current = Math.max(peak.current, live);
           if (
@@ -221,6 +230,7 @@ export function ContributionController({ perf, particles }: Props) {
 
         const takenIn = takenInAt.current >= 0 && elapsed >= takenInAt.current + STILLNESS_AFTER;
         if (takenIn || elapsed >= DURATION.TRANSFORMING) {
+          useCollective.getState().advanceVisualFormation(useCollective.getState().build);
           emitted.current = false;
           setState('COMPLETE');
         }

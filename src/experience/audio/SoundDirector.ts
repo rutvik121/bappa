@@ -2,6 +2,7 @@
 
 import { ARRIVAL_DISTANCE, type ParticleTelemetry } from '../systems/ParticleSystem';
 import type { ContributionType, SceneStateName } from '../state/sceneState';
+import type { RitualState } from '../state/festival';
 import {
   DARKNESS_HOLD,
   VISARJAN_DURATION,
@@ -31,6 +32,10 @@ export interface SceneFrame {
   dissolve: number;
   /** 0..1, how built the collective Bappa is. */
   build: number;
+  ritualState?: RitualState;
+  sthapanaArriving?: boolean;
+  sthapanaElapsed?: number;
+  sthapanaCompleted?: boolean;
 }
 
 type Send = (event: ExperienceEvent, payload?: EventPayload) => void;
@@ -97,8 +102,11 @@ interface VisarjanWatch {
 
 export class SoundDirector {
   private last: SceneStateName | null = null;
+  private lastRitual: RitualState | null = null;
   private offering: OfferingWatch | null = null;
   private visarjan: VisarjanWatch | null = null;
+  private sthapanaStarted = false;
+  private sthapanaCompleted = false;
 
   /** Reused every frame: this is emitted sixty times a second. */
   private readonly motion: OfferingMotion = {
@@ -125,6 +133,54 @@ export class SoundDirector {
       this.last = f.state;
       this.enter(f, prev);
     }
+
+    // Ritual state transition
+    const currentRitual =
+      f.ritualState ?? (f.sthapanaArriving || f.sthapanaCompleted ? 'BAPPA_PRESENT' : 'PRE_STHAPANA');
+    if (this.lastRitual === null) {
+      this.lastRitual = currentRitual;
+    } else if (currentRitual !== this.lastRitual) {
+      const prevRitual = this.lastRitual;
+      this.lastRitual = currentRitual;
+      if (currentRitual === 'PRE_STHAPANA') {
+        this.sthapanaStarted = false;
+        this.sthapanaCompleted = false;
+        this.send('PRE_STHAPANA_RESTORED');
+      } else if (
+        currentRitual === 'BAPPA_PRESENT' &&
+        prevRitual === 'PRE_STHAPANA' &&
+        f.sthapanaCompleted &&
+        !f.sthapanaArriving
+      ) {
+        // Direct transition from PRE_STHAPANA to BAPPA_PRESENT
+        this.sthapanaStarted = true;
+        this.sthapanaCompleted = true;
+        this.send('STHAPANA_COMPLETE');
+      }
+    }
+
+    // Sthapana arrival transition
+    if (f.sthapanaArriving) {
+      if (!this.sthapanaStarted) {
+        this.sthapanaStarted = true;
+        this.sthapanaCompleted = false;
+        this.send('STHAPANA_STARTED');
+      }
+    } else {
+      if (this.sthapanaStarted && !this.sthapanaCompleted) {
+        this.sthapanaCompleted = true;
+        this.send('STHAPANA_COMPLETE');
+      } else if (f.sthapanaCompleted && !this.sthapanaStarted) {
+        // Visitor arrived after Sthapana already finished; mark as completed so it never replays
+        this.sthapanaStarted = true;
+        this.sthapanaCompleted = true;
+      } else if (!f.sthapanaArriving && !f.sthapanaCompleted) {
+        // PRE_STHAPANA: reset flags so Sthapana can play when it arrives
+        this.sthapanaStarted = false;
+        this.sthapanaCompleted = false;
+      }
+    }
+
     if (this.offering) this.watchOffering(dt, f);
     if (this.visarjan && f.state === 'VISARJAN') this.watchVisarjan(f);
   }

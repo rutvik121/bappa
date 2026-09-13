@@ -12,19 +12,16 @@
  * VISARJAN_DURATION + DARKNESS_HOLD into Visarjan.
  */
 export const FAREWELL_LINES = [
-  { lines: ['Some things', 'aren’t meant to stay.'], at: 500, kind: 'verse' },
-  // Only for someone who left something with him, from this device. It is
-  // the one sentence that tells them the disappearance was also theirs --
-  // no archive, no replay, no thanks.
-  { lines: ['What you left went with him.'], at: 4300, kind: 'kept', onlyIfLeft: true },
-  { lines: ['Ganpati Bappa Morya'], at: 8200, kind: 'chant' },
+  { lines: ['He returns.'], at: 3000, kind: 'verse' },
+  { lines: ['The place remains.'], at: 11000, kind: 'settled' },
+  { lines: ['GANPATI BAPPA MORYA'], at: 18000, kind: 'chant' },
 ] as const;
 
 /** Each line's fade in, in milliseconds. */
 export const FAREWELL_FADE_MS = 3000;
 
-/** When the words leave, and only the darkness remains. */
-export const FAREWELL_OUT_MS = 17000;
+/** When the closing lines complete, leaving the empty asana and settled silence. */
+export const FAREWELL_OUT_MS = 28000;
 
 /** The line the distant shankh sounds under. */
 export const BELL_LINE = 2;

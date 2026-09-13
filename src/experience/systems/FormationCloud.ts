@@ -73,15 +73,11 @@ const vertexShader = /* glsl */ `
     p += (outward * 0.30 + vec3(0.0, 0.42, 0.0)) * ease;
     p += drift * ease * 0.10;
 
-    // Loose dust that never became clay still has to go.
-    // Dense enough to hold the surface: sparse specks read as absence.
-    // Raised once he began genuinely incomplete: most of him is loose on
-    // the first morning rather than a few passages, so the same points
-    // are spread over more than twice the area and at the old weight the
-    // silhouette thinned to a haze instead of holding his shape.
-    float looseAlpha = loose * mix(0.82, 1.0, gather) * (1.0 - smoothstep(0.0, 0.35, uDissolve));
+    // Unformed parts remain empty negative space: Bappa is genuinely incomplete
+    // and forms only as offering material arrives. No ghost silhouette of loose dust.
+    float looseAlpha = 0.0;
 
-    // Released material: bright as it comes away, gone by the end of its
+    // Released material during visarjan: bright as it comes away, gone by the end of its
     // own short life.
     float bound = 1.0 - loose;
     float releaseAlpha = bound * step(0.0001, past) * (1.0 - rel);

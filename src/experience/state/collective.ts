@@ -58,6 +58,8 @@ interface CollectiveStore {
   count: number;
   /** 0..1, the server's number. Never computed here. */
   build: number;
+  /** 0..1, the visual formation progress achieved as offering material settles. */
+  visualBuild: number;
   ready: boolean;
   connection: Connection;
 
@@ -71,6 +73,8 @@ interface CollectiveStore {
   stop: () => void;
   /** Takes the next offering to present, or null if there is nothing. */
   takeNext: () => OfferingEvent | null;
+  /** Advances visual formation as material settles into the murti. */
+  advanceVisualFormation: (target: number) => void;
   /** Development only. */
   setCount: (n: number) => Promise<void>;
   record: () => Promise<void>;
@@ -83,10 +87,13 @@ let transport: Transport | null = null;
 /** Keeps the day (and so the formation) honest across a long visit. */
 let resyncTimer: ReturnType<typeof setInterval> | null = null;
 
+const initialFormation = formationFrom(1, 0, TARGET_OFFERINGS, FESTIVAL_DAYS);
+
 export const useCollective = create<CollectiveStore>((set, get) => ({
   snapshot: null,
   count: 0,
-  build: formationFrom(1, 0, TARGET_OFFERINGS, FESTIVAL_DAYS),
+  build: initialFormation,
+  visualBuild: initialFormation,
   ready: false,
   connection: 'connecting',
 
@@ -118,14 +125,27 @@ export const useCollective = create<CollectiveStore>((set, get) => ({
     return next;
   },
 
+  advanceVisualFormation: (target: number) => {
+    set((s) => ({
+      visualBuild: Math.max(s.visualBuild, Math.min(1, target)),
+    }));
+  },
+
   setCount: async (n) => {
     // Development only; the route refuses this in production.
     try {
-      await fetch('/api/dev/offerings', {
+      const res = await fetch('/api/dev/offerings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: n }),
       });
+      if (res.ok) {
+        const body = (await res.json()) as { ok: boolean; snapshot: BappaSnapshot };
+        if (body.snapshot) {
+          applySnapshot(set, body.snapshot);
+          set({ visualBuild: body.snapshot.formationProgress });
+        }
+      }
     } catch {
       // The panel simply will not move the tally.
     }
@@ -160,6 +180,9 @@ function applySnapshot(set: Set, snapshot: BappaSnapshot) {
     snapshot,
     count: snapshot.offeringsCount,
     build: snapshot.formationProgress,
+    // A new visitor or a refreshed page receives the current snapshot immediately
+    // without replaying historical offerings.
+    visualBuild: !s.ready ? snapshot.formationProgress : Math.max(s.visualBuild, snapshot.formationProgress),
     ready: true,
     connection: 'live',
     // A snapshot already accounts for everything up to its own sequence,
@@ -226,7 +249,7 @@ function handle(set: Set, get: Get, event: CollectiveEvent) {
     }
 
     case 'BAPPA_FORMATION_UPDATED':
-      set({ count: event.offeringsCount, build: event.formationProgress });
+      set({ count: event.offeringsCount, build: event.formationProgress, visualBuild: event.formationProgress });
       return;
 
     case 'VISARJAN_STARTED':

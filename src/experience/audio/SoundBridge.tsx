@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useScene } from '../state/sceneState';
 import { useCollective } from '../state/collective';
+import { getRitualState, getSthapanaArrival } from '../state/festival';
 import { emit } from './events';
 import { SoundDirector } from './SoundDirector';
 import type { ParticleHandle } from '../components/ParticleField';
@@ -27,6 +28,8 @@ export function SoundBridge({
 
   useFrame((_, rawDt) => {
     const s = useScene.getState();
+    const sthapana = getSthapanaArrival();
+    const ritualState = getRitualState();
     director.step(Math.min(rawDt, 1 / 20), {
       state: s.state,
       elapsed: s.elapsed,
@@ -34,6 +37,10 @@ export function SoundBridge({
       telemetry: particles.current.system?.telemetry ?? null,
       dissolve: ganpati.current.dissolve,
       build: useCollective.getState().build,
+      ritualState,
+      sthapanaArriving: sthapana.isArriving,
+      sthapanaElapsed: sthapana.elapsed,
+      sthapanaCompleted: sthapana.isCompleted,
     });
   });
 

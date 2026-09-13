@@ -27,20 +27,21 @@ const vertexShader = /* glsl */ `
   varying float vAlpha;
 
   void main() {
-    vec3 p = position;
-
-    // Three slow, mutually irrational drifts. Nothing loops visibly.
-    float t = uTime * aDrift;
-    p.x += sin(t * 0.21 + aSeed * 6.28) * 0.30;
-    p.y += sin(t * 0.13 + aSeed * 3.14) * 0.22 + sin(t * 0.05) * 0.10;
-    p.z += cos(t * 0.17 + aSeed * 4.71) * 0.30;
+    // Three very slow, mutually irrational drifts. Almost still.
+    float t = uTime * aDrift * 0.65;
+    p.x += sin(t * 0.18 + aSeed * 6.28) * 0.22;
+    p.y += sin(t * 0.11 + aSeed * 3.14) * 0.16 + sin(t * 0.04) * 0.08;
+    p.z += cos(t * 0.14 + aSeed * 4.71) * 0.22;
 
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
 
-    // Motes are only visible where the key light reaches: brightest in a
-    // band above and left of centre, invisible in the deep background.
-    float lit = smoothstep(3.2, 0.6, length(p - vec3(-1.0, 2.2, 1.2)));
-    float twinkle = 0.55 + sin(uTime * 1.1 + aSeed * 12.0) * 0.45;
+    // Motes catch the warm light:
+    // - in the upper key light cone
+    // - in the quiet ceremonial pool of light resting over the asana
+    float litUpper = smoothstep(3.2, 0.6, length(p - vec3(-1.0, 2.2, 1.2)));
+    float litPool = smoothstep(2.4, 0.35, length(p - vec3(-0.15, 0.25, 0.35))) * 0.82;
+    float lit = max(litUpper, litPool);
+    float twinkle = 0.65 + sin(uTime * 0.7 + aSeed * 12.0) * 0.35;
 
     vAlpha = lit * twinkle * uOpacity;
 
@@ -56,7 +57,7 @@ const fragmentShader = /* glsl */ `
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
     float core = pow(1.0 - d, 3.0);
-    gl_FragColor = vec4(vec3(0.85, 0.6, 0.38), core * vAlpha * 0.22);
+    gl_FragColor = vec4(vec3(0.88, 0.65, 0.42), core * vAlpha * 0.22);
   }
 `;
 

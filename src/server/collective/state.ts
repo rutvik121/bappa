@@ -73,6 +73,7 @@ export async function getSnapshot(): Promise<BappaSnapshot> {
 
   return {
     lifecycle: when.lifecycle,
+    ritualState: when.ritualState,
     festivalDay: when.day,
     offeringsCount,
     formationProgress: progressFor(when.day, when.lifecycle, offeringsCount),
@@ -92,9 +93,9 @@ export async function getSnapshot(): Promise<BappaSnapshot> {
  * window closes he is whole, and the visarjan takes him from there.
  */
 function progressFor(day: number, lifecycle: string, offerings: number): number {
-  if (lifecycle === 'PRE_LAUNCH') return formationFrom(1, 0, TARGET_OFFERINGS, FESTIVAL_DAYS);
   if (lifecycle === 'VISARJAN' || lifecycle === 'COMPLETED') return 1;
-  return formationFrom(day, offerings, TARGET_OFFERINGS, FESTIVAL_DAYS);
+  const effectiveDay = Math.max(1, day);
+  return formationFrom(effectiveDay, offerings, TARGET_OFFERINGS, FESTIVAL_DAYS);
 }
 
 export type SubmitResult =
