@@ -15,6 +15,7 @@ import {
 import { FAREWELL_LINES, FAREWELL_OUT_MS } from './farewell';
 import { OFFERINGS, OfferingMark, offeringFor } from './offerings';
 import { Masthead } from './Masthead';
+import { ShareCard } from './ShareCard';
 
 /**
  * The entire interface.
@@ -48,6 +49,8 @@ export function Overlay({ ready }: { ready: boolean }) {
 
   const count = useCollective((s) => s.count);
   const collectiveReady = useCollective((s) => s.ready);
+  /** Where the festival is, according to the one clock that decides it. */
+  const lifecycle = useCollective((s) => s.snapshot?.lifecycle);
   const [festival, setFestival] = useState(() => getFestivalStatus());
   const [countdown, setCountdown] = useState<Countdown>(() => getCountdown());
 
@@ -65,8 +68,13 @@ export function Overlay({ ready }: { ready: boolean }) {
    * Unmounted rather than faded, so it is a certainty and not an animation.
    */
   const [uiGone, setUiGone] = useState(false);
-  /** Whether this is the visitor's first read of the festival clock. */
-  const firstRead = useRef(true);
+  /**
+   * Whether they have been offered something to keep. Set a few seconds
+   * into the closing line so it never lands on top of the moment, and
+   * deliberately not cleared when he settles: it waits quietly until they
+   * leave, rather than being snatched away on a timer.
+   */
+  const [keepOffered, setKeepOffered] = useState(false);
 
   const [step, setStep] = useState<Step>('choose');
   const [sound, setSound] = useState<SoundStatus>('off');
@@ -114,32 +122,64 @@ export function Overlay({ ready }: { ready: boolean }) {
    */
   useEffect(() => {
     const tick = () => {
-      const next = getFestivalStatus();
-      setFestival(next);
+      // The countdown is local because it has to tick between snapshots;
+      // it is anchored to the server's clock, and it decides nothing.
+      setFestival(getFestivalStatus());
       setCountdown(getCountdown());
-
-      const s = useScene.getState().state;
-
-      if (next.phase === 'ENDED' && (s === 'IDLE' || s === 'COMPLETE')) {
-        if (firstRead.current) {
-          // Arriving after it is over: he is already gone, and there is no
-          // replay. Only the darkness and the last words.
-          useScene.getState().setState('VISARJAN');
-          useScene.getState().setElapsed(VISARJAN_DURATION + DARKNESS_HOLD);
-        } else {
-          // It ended while they were here. They see it, and hear it.
-          audio().init();
-          useScene.getState().setState('VISARJAN');
-        }
-      }
-
-      firstRead.current = false;
     };
 
     tick();
     const id = setInterval(tick, 5000);
     return () => clearInterval(id);
   }, []);
+
+  /**
+   * When he goes.
+   *
+   * The server says so, and says how far in it is. Not this browser: a
+   * device with a wrong clock would otherwise hold its own private
+   * Visarjan early or late, and the one thing this ending has to be is
+   * the same ending for everybody.
+   *
+   * Because the position is taken from the server's own clock rather than
+   * from when this tab happened to load, two people watching from
+   * different cities are at the same moment of the same dissolution --
+   * and a refresh halfway through rejoins it where it actually is instead
+   * of starting him dissolving again.
+   *
+   * COMPLETED means it is already over. There is no replay and no
+   * archive, so whoever arrives after -- or refreshes, a year later --
+   * gets the dark and the last words, never a Bappa who came back.
+   */
+  useEffect(() => {
+    if (lifecycle !== 'VISARJAN' && lifecycle !== 'COMPLETED') return;
+
+    const scene = useScene.getState();
+    if (scene.state === 'VISARJAN') return;
+    // Mid-offering is left alone: their own moment finishes, and the next
+    // snapshot brings the ending round again a few seconds later.
+    if (scene.state !== 'IDLE' && scene.state !== 'COMPLETE') return;
+
+    const snap = useCollective.getState().snapshot;
+    const into = snap ? (snap.now - snap.endsAt) / 1000 : Infinity;
+    const over = VISARJAN_DURATION + DARKNESS_HOLD;
+
+    scene.setState('VISARJAN');
+
+    if (lifecycle === 'COMPLETED' || !Number.isFinite(into) || into >= over) {
+      scene.setElapsed(over);
+      return;
+    }
+
+    if (into > 1) {
+      // Joining a dissolution already under way.
+      scene.setElapsed(into);
+      audio().init();
+    } else {
+      // It is beginning now. They see it from the first grain, and hear it.
+      audio().init();
+    }
+  }, [lifecycle]);
 
   // The words wait for the darkness to have been empty for a moment.
   useEffect(() => {
@@ -178,6 +218,18 @@ export function Overlay({ ready }: { ready: boolean }) {
       if (useScene.getState().draft) setDraft('');
     }
   }, [state, setDraft]);
+
+  // The line lands, and is left alone. Only after it has been sitting
+  // there a while is anything else offered.
+  useEffect(() => {
+    if (state === 'COMPLETE') {
+      const t = setTimeout(() => setKeepOffered(true), 5200);
+      return () => clearTimeout(t);
+    }
+    // Gone the moment he starts to leave, like everything else.
+    if (state === 'VISARJAN' || state === 'CONTRIBUTING') setKeepOffered(false);
+    return undefined;
+  }, [state]);
 
   // A beat before focus, so the keyboard does not race the push-in.
   useEffect(() => {
@@ -394,6 +446,15 @@ export function Overlay({ ready }: { ready: boolean }) {
                 {offeringFor(type).closing}
               </p>
             )}
+          </div>
+
+          {/* Something to keep, offered late and quietly. The line has to
+              land first and be allowed to sit there -- an invitation to
+              share arriving on top of it would make the moment a prompt.
+              It outlives the closing state on purpose: once he is still
+              again it is still there, until they go. */}
+          <div className={`layer layer--keep ${keepOffered ? 'in' : ''}`}>
+            <ShareCard type={type} count={count} />
           </div>
         </>
       )}

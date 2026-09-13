@@ -34,9 +34,40 @@ function rateBucket(ip: string): string {
 /** Most events a reconnecting client is given before it is told to resync. */
 export const MAX_CATCHUP = 64;
 
+/**
+ * Whether this instance has already asked for the offerings to be let go.
+ *
+ * The database is the real guard -- it stamps the moment once and ignores
+ * every later call -- so this only stops a busy instance asking on every
+ * single request after he has gone.
+ */
+let letGoAttempted = false;
+
+/**
+ * He is gone, and so is what people left with him.
+ *
+ * Deliberately lazy rather than scheduled: it needs no cron, no worker
+ * and nothing to keep running, and it cannot be missed -- the next
+ * request after the window closes is what triggers it. Fire and forget,
+ * because a visitor waiting on a delete is a visitor waiting for nothing
+ * that concerns them.
+ */
+function letGoIfOver(lifecycle: string) {
+  if (lifecycle !== 'COMPLETED' || letGoAttempted) return;
+  letGoAttempted = true;
+  void getStore()
+    .dissolve()
+    .catch(() => {
+      // Try again on a later request rather than never.
+      letGoAttempted = false;
+    });
+}
+
 export async function getSnapshot(): Promise<BappaSnapshot> {
   const store = getStore();
   const when = festivalNow();
+
+  letGoIfOver(when.lifecycle);
 
   const [offeringsCount, seq] = await Promise.all([store.offerings(), store.head()]);
 
