@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Cormorant_Garamond, Hanken_Grotesk } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 
 /**
@@ -67,7 +68,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* The GLB is the single blocking asset; start it during HTML parse. */}
         <link rel="preload" href="/models/ganpati.glb" as="fetch" crossOrigin="anonymous" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
