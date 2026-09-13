@@ -533,6 +533,42 @@ button {
   margin-top: 14px;
 }
 
+/**
+ * Something to keep.
+ *
+ * Under the closing line and well beneath it, at the quietest weight the
+ * piece has. It is an offer, not an ask: anyone who wants it will find
+ * it, and anyone who came here to leave something and be done is not
+ * interrupted by it.
+ */
+.layer--keep {
+  left: 0;
+  right: 0;
+  bottom: calc(var(--safe-bottom) + clamp(16px, 3.5vh, 40px));
+  padding: 0 var(--gutter);
+  display: flex;
+  justify-content: center;
+}
+
+.aside--keep {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  /* Quiet, but findable. Any dimmer and someone who wants it has to hunt
+     for it, which is its own kind of interruption. */
+  opacity: 0.85;
+}
+
+.aside--keep:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.aside--keep:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 /* ---------------------------------------------------------------- */
 /* PERSONAL OFFERING                                                 */
 /* ---------------------------------------------------------------- */
