@@ -27,6 +27,8 @@ const vertexShader = /* glsl */ `
   varying float vAlpha;
 
   void main() {
+    vec3 p = position;
+
     // Three very slow, mutually irrational drifts. Almost still.
     float t = uTime * aDrift * 0.65;
     p.x += sin(t * 0.18 + aSeed * 6.28) * 0.22;

@@ -84,7 +84,47 @@ export function formationWeight(x: number, y: number, z: number, b: FormBounds):
   // Two octaves: the broad one breaks the frontier into tongues, the fine
   // one gives its edge a grain so it crumbles rather than cuts.
   const n = smoothNoise(x * 3.1, y * 2.2, z * 3.1) * 0.72 + smoothNoise(x * 9.4, y * 9.4, z * 9.4) * 0.28;
-  return Math.min(1, Math.max(0, heightNorm * 0.62 + radial * 0.17 + n * 0.21));
+  const baseWeight = heightNorm * 0.62 + radial * 0.17 + n * 0.21;
+
+  // Identity-first regional hierarchy calibrated to ganpati.glb geometry:
+  // Head dome, face, trunk, and ears resolve early so Bappa is immediately recognizable.
+  // Crown (mukut) begins above the head dome (heightNorm > 0.76) and emerges across Days 1-10.
+  const absZ = Math.abs(z - b.cz);
+  const isCrown = heightNorm > 0.76;
+  const isTrunk = heightNorm >= 0.36 && heightNorm <= 0.60 && x > 0.04 && absZ < 0.08;
+  const isHeadFace = heightNorm >= 0.50 && heightNorm <= 0.76 && absZ < 0.17;
+  const isEar = heightNorm >= 0.48 && heightNorm <= 0.76 && absZ >= 0.17;
+  const isTorso = heightNorm >= 0.28 && heightNorm < 0.50;
+  const isBase = heightNorm < 0.28;
+
+  if (isTrunk) {
+    // Trunk resolves ~100% on Day 1
+    return Math.min(baseWeight * 0.45, 0.40);
+  }
+  if (isHeadFace) {
+    // Head dome, forehead, and face resolve ~100% on Day 1
+    return Math.min(baseWeight * 0.52, 0.45);
+  }
+  if (isEar) {
+    // Ears resolve ~100% on Day 1
+    const earRadial = Math.min(1, Math.max(0, (absZ - 0.17) / (0.345 - 0.17)));
+    return Math.min(baseWeight * 0.65, 0.42 + earRadial * 0.08);
+  }
+  if (isCrown) {
+    // Crown forms progressively: base rim at Day 1 (0.54) climbing to peak at Day 10 (1.00)
+    const crownHeight = Math.min(1.0, Math.max(0, (heightNorm - 0.76) / (1.0 - 0.76)));
+    return Math.min(1.0, 0.54 + crownHeight * 0.43 + n * 0.03);
+  }
+  if (isTorso) {
+    // Torso resolves smoothly (~95-100% on Day 1)
+    return Math.min(1, Math.max(0, baseWeight * 0.90));
+  }
+  if (isBase) {
+    // Base & folded legs resolve (~75-85% on Day 1)
+    return Math.min(1, Math.max(0, baseWeight * 0.88));
+  }
+
+  return Math.min(1, Math.max(0, baseWeight));
 }
 
 export interface SurfaceSamples {

@@ -8,7 +8,7 @@ import {
   type OfferingEvent,
   type OfferingType,
 } from '@/shared/collective';
-import { setServerTime } from './festival';
+import { setServerTime, getFestivalStatus } from './festival';
 import { connect, type Transport, type TransportHandlers } from './transport';
 
 /**
@@ -133,6 +133,9 @@ export const useCollective = create<CollectiveStore>((set, get) => ({
 
   setCount: async (n) => {
     // Development only; the route refuses this in production.
+    const day = getFestivalStatus().day || 1;
+    const f = formationFrom(day, n, TARGET_OFFERINGS, FESTIVAL_DAYS);
+    set({ count: n, build: f, visualBuild: f });
     try {
       const res = await fetch('/api/dev/offerings', {
         method: 'POST',

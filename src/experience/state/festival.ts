@@ -303,7 +303,7 @@ export function describeTime(
   // "Remain" alone left a first-time visitor asking: remain until what?
   return {
     count: `${daysLeft} days until Visarjan`,
-    phase: 'He’s taking shape.',
+    phase: 'He is with us.',
   };
 }
 

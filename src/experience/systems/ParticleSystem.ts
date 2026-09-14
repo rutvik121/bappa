@@ -104,6 +104,11 @@ function pickFrontierTarget(): number {
 
   const n = order.length;
 
+  // When Bappa is fully formed, offerings settle naturally across his sacred form
+  if (formationLevel >= 0.999) {
+    return order[Math.floor(Math.random() * n)] * 3;
+  }
+
   // First point not yet made.
   let lo = 0;
   let hi = n;
@@ -117,9 +122,7 @@ function pickFrontierTarget(): number {
   // passage of him instead of stacking on one spot.
   const band = Math.max(1, (n * 0.07) | 0);
 
-  // He is whole: there is no frontier left, so material settles into the
-  // last passages to have formed rather than snapping to the base.
-  if (lo >= n) return order[n - 1 - ((Math.random() * band) | 0)] * 3;
+  if (lo >= n) return order[Math.floor(Math.random() * n)] * 3;
 
   const end = Math.min(n, lo + band);
   return order[lo + ((Math.random() * (end - lo)) | 0)] * 3;

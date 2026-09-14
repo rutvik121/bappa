@@ -145,7 +145,7 @@ async function draw(type: ContributionType, count: number): Promise<Blob | null>
   c.font = `500 34px ${serif}`;
   c.fillText(
     count > 0
-      ? `${count.toLocaleString('en-IN')} ${count === 1 ? 'person has' : 'people have'} left something with him.`
+      ? `${count.toLocaleString('en-IN')} ${count === 1 ? 'voice has' : 'voices have'} reached him.`
       : 'Left with Bappa.',
     W / 2,
     mid + 232

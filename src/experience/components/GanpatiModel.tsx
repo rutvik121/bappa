@@ -83,8 +83,11 @@ const grainFn = /* glsl */ `
  * rather than along a line. Visarjan runs the same axis backwards.
  */
 const carveChunk = /* glsl */ `
-  float ahead = vFormWeight - uFormation;
-  if (ahead > 0.0 && bappaGrain(vLocalPos) < clamp(ahead / 0.05, 0.0, 1.0)) discard;
+  if (uFormation <= 0.0001) discard;
+  if (uFormation < 0.999) {
+    float ahead = vFormWeight - uFormation;
+    if (ahead > 0.0 && bappaGrain(vLocalPos) < clamp(ahead / 0.05, 0.0, 1.0)) discard;
+  }
 
   if (uDissolve > 0.0001) {
     float behind = vFormWeight - (1.0 - uDissolve);
@@ -132,10 +135,17 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     // Centre on X/Z, and rest the base at y=0 before the group lifts it.
     root.position.set(-center.x * s, -box.min.y * s, -center.z * s);
 
+    let foundMesh: THREE.Mesh | null = null;
     root.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
+      const m = o as THREE.Mesh;
+      if (m.isMesh && !foundMesh) {
+        foundMesh = m;
+      }
+    });
 
+    const targetMesh: THREE.Mesh | null = foundMesh;
+    if (targetMesh) {
+      const mesh: THREE.Mesh = targetMesh;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = true;
@@ -240,9 +250,9 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
              // frontier leaves on him, because above it there is no
              // surface to mark -- and it is what makes the edge read as
              // clay being added rather than as a cut.
-             float justSet = 1.0 - smoothstep(0.0, 0.055, uFormation - vFormWeight);
-             float speck = bappaGrain(vLocalPos) - 0.5;
-             gl_FragColor.rgb *= 1.0 - justSet * (0.24 - speck * 0.14);
+              float justSet = uFormation >= 0.999 ? 0.0 : (1.0 - smoothstep(0.0, 0.055, uFormation - vFormWeight));
+              float speck = bappaGrain(vLocalPos) - 0.5;
+              gl_FragColor.rgb *= 1.0 - justSet * (0.24 - speck * 0.14);
 
              // --- an offering arriving ---
              // The clay catches the light where it was touched: a small,
@@ -312,8 +322,7 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
       });
       cloud.current = c;
       mesh.add(c.points);
-
-    });
+    }
 
     return root;
   }, [scene, perf.formationParticles]);
@@ -332,26 +341,20 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
   // Hand the normalised surface to the dissolve system so its fragments
   // detach from exactly where the sculpture is eroding.
   useEffect(() => {
-    if (!onGeometry) return;
-    let sent = false;
+    if (!onGeometry || !surfaceMesh.current) return;
     model.updateMatrixWorld(true);
-    model.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (sent || !mesh.isMesh) return;
-      onGeometry(mesh.geometry, mesh.matrixWorld.clone());
-      sent = true;
-    });
+    onGeometry(surfaceMesh.current.geometry, surfaceMesh.current.matrixWorld.clone());
   }, [model, onGeometry]);
 
   useEffect(() => {
     const current = cloud.current;
+    const surf = surfaceMesh.current;
     return () => {
       current?.dispose();
-      model.traverse((o) => {
-        const mesh = o as THREE.Mesh;
-        if (mesh.material) (mesh.material as THREE.Material).dispose();
-        mesh.customDepthMaterial?.dispose();
-      });
+      if (surf) {
+        if (surf.material) (surf.material as THREE.Material).dispose();
+        surf.customDepthMaterial?.dispose();
+      }
     };
   }, [model]);
 
@@ -407,31 +410,26 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     } else if (sthapana.isArriving) {
       // Sthapana arrival progression:
       // 0 - 2.5s: Anticipation — empty asana, uFormation = 0
-      // 2.5 - 9.5s: Emergence — Bappa forms from 0 toward target (0.60 Day 1 baseline)
-      // 9.5 - 12.5s: Settling — Bappa settles onto the asana at target
-      // 12.5 - 14.0s: Awakening — Bappa is formed at target, breathing awakens
+      // 2.5 - 9.5s: Emergence — Bappa emerges fully into form (from 0 to 1.0)
+      // 9.5 - 12.5s: Settling — Bappa settles onto the asana (fully formed)
+      // 12.5 - 14.0s: Awakening — Bappa is fully formed, sacred breathing awakens
       if (sthapana.elapsed < 2.5) {
         formation.current = 0;
       } else if (sthapana.elapsed < 9.5) {
         const k = (sthapana.elapsed - 2.5) / 7.0;
         const ease = k * k * (3 - 2 * k);
-        formation.current = target * ease;
+        formation.current = ease;
       } else {
-        formation.current = target;
+        formation.current = 1.0;
       }
       uniforms.current.uFormation.value = formation.current;
       setFormationLevel(formation.current);
     } else {
-      // Normal BAPPA_PRESENT accumulation
-      const jumped = Math.abs(target - formation.current) > 0.15;
-      if (!settled.current || jumped) {
-        settled.current = true;
-        formation.current = target;
-      } else {
-        formation.current += (target - formation.current) * Math.min(1, dt * 0.5);
-      }
-      uniforms.current.uFormation.value = formation.current;
-      setFormationLevel(formation.current);
+      // Normal BAPPA_PRESENT: Bappa is always 100% complete throughout festival days.
+      // target respects development overrides if set, otherwise 1.0.
+      formation.current = target;
+      uniforms.current.uFormation.value = target;
+      setFormationLevel(target);
     }
 
     if (!group.current) return;
@@ -440,11 +438,12 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     group.current.position.y = BAPPA_CENTER.y - TARGET_HEIGHT * 0.5;
     group.current.rotation.y = 0;
 
-    // Authoritative ritual state: Bappa is visible during BAPPA_PRESENT (including Sthapana),
+    // Authoritative ritual state: Bappa is visible during BAPPA_PRESENT (emerging from 2.5s onwards during Sthapana),
     // and hides once Visarjan dissolve completes.
     const { state: sceneState, elapsed: sceneElapsed } = useScene.getState();
     const isVisarjanCompleted = sceneState === 'VISARJAN' && sceneElapsed >= VISARJAN_DURATION;
-    const isPresent = (ritualState === 'BAPPA_PRESENT' || sthapana.isArriving) && !isVisarjanCompleted;
+    const isArrivingEmergence = sthapana.isArriving && sthapana.elapsed >= 2.5;
+    const isPresent = ((ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving) || isArrivingEmergence) && !isVisarjanCompleted;
     group.current.visible = isPresent;
 
     const state = useScene.getState().state;
@@ -490,7 +489,6 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     <group
       ref={group}
       position={[0, BAPPA_CENTER.y - TARGET_HEIGHT * 0.5, 0]}
-      visible={getRitualState() === 'BAPPA_PRESENT'}
     >
       {/* The asset is authored facing +X. This inner group turns it to
           face the camera and is kept separate from the outer group so the

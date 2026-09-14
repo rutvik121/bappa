@@ -207,11 +207,12 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
       if (ritualState === 'PRE_STHAPANA') {
         asanaFactor = 1.0;
       } else if (sthapana.isArriving) {
-        asanaFactor = Math.max(0, 1.0 - sthapana.elapsed / 9.0);
+        // Fades out completely during anticipation (0 - 2.5s) before Bappa emerges
+        asanaFactor = Math.max(0, 1.0 - sthapana.elapsed / 2.5);
       } else if (ritualState === 'POST_VISARJAN') {
         asanaFactor = 0.55;
       }
-      asanaLight.current.intensity = 1.35 * asanaFactor * reveal;
+      asanaLight.current.intensity = 1.2 * asanaFactor * reveal;
     }
   });
 
@@ -253,14 +254,14 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
       {/* Facial modeling presence: soft frontal catch light revealing sculpted eyes and brow */}
       <pointLight ref={face} position={[-0.2, 1.48, 2.2]} color="#ffe4cb" intensity={1.0} decay={2} distance={4.5} />
 
-      {/* Ceremonial asana pool light: quiet warm lamplight directly over the waiting seat */}
+      {/* Ceremonial asana pool light: quiet warm lamplight resting over the waiting seat */}
       <pointLight
         ref={asanaLight}
-        position={[0, 0.45, 0.3]}
+        position={[0, 0.08, 0.45]}
         color="#ffe2c4"
-        intensity={1.35}
+        intensity={1.2}
         decay={2}
-        distance={4.2}
+        distance={3.0}
       />
 
       {/* Ambient holds rich terracotta depth in crevices rather than pitch black */}

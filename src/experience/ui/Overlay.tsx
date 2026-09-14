@@ -383,10 +383,10 @@ export function Overlay({ ready }: { ready: boolean }) {
                   </p>
                 )}
 
-                {ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving && collectiveReady && count > 0 && (
+                {ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving && collectiveReady && typeof count === 'number' && (
                   <p className="tally">
                     {count.toLocaleString('en-IN')}{' '}
-                    {count === 1 ? 'person has' : 'people have'} left something with him.
+                    {count === 1 ? 'voice has' : 'voices have'} reached him.
                   </p>
                 )}
               </>

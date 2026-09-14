@@ -92,7 +92,27 @@ export function DevPanel() {
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+
+    // Expose helpers for visual and automation testing
+    (window as unknown as { __BAPPA_DEV__?: unknown }).__BAPPA_DEV__ = {
+      standAtDay,
+      setClockOffset,
+      getClockOffset,
+      setFormationOverride,
+      getFormationOverride,
+      currentFormation,
+      describeFormation,
+      getFestivalStatus,
+      setCount: (n: number) => useCollective.getState().setCount(n),
+      getCount: () => useCollective.getState().count,
+      useScene,
+      useCollective,
+      useDev,
+    };
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
   }, [toggle]);
 
   const scene = useScene.getState();

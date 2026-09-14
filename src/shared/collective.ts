@@ -108,20 +108,23 @@ export interface BappaSnapshot {
  * Where he starts: begun, not finished. Mirrors the client's own floor --
  * see state/formation.ts for why it is not lower.
  */
-export const FORMATION_FLOOR = 0.60;
+export const FORMATION_FLOOR = 0.55;
 
 /**
  * How completely he has formed, 0..1.
  *
- * The calendar guarantees he is whole by the last day; the offerings get
- * him there sooner and fuller in the meantime. Each accepted offering
- * permanently advances formation progress. At target offerings, Bappa
- * reaches full completion.
+ * Narrative Invariant:
+ * TIME BUILDS HIM. PEOPLE HELP SHAPE HIM.
  *
- * Invariant: formationProgress = max(calendarBaseline, offeringProgress)
+ * 1. Base Day Progress (Guaranteed Minimum):
+ *    Even with ZERO offerings, Bappa progresses naturally day by day:
+ *    Day 1 (0.55, recognizable but visibly incomplete) -> Day 10 (1.00, fully formed).
  *
- * Pure and shared on purpose: this is the function that has to give every
- * browser the same Bappa from the same tally.
+ * 2. Collective Offering Influence:
+ *    Offerings accelerate and enrich the day's progression within an available range,
+ *    without replacing the daily foundation or allowing Day 1 to complete prematurely.
+ *    On Day 1, formation is bounded to ~0.72 so Bappa remains visibly incomplete.
+ *    On Day 10, full completion (1.00) is guaranteed.
  */
 export function formationFrom(
   day: number,
@@ -130,10 +133,11 @@ export function formationFrom(
   days: number
 ): number {
   const dayProgress = clamp01((day - 1) / Math.max(1, days - 1));
+  const baseFormation = FORMATION_FLOOR + (1 - FORMATION_FLOOR) * dayProgress;
+  const dayCeiling = Math.min(1.0, 0.72 + 0.28 * dayProgress);
   const offeringProgress = target > 0 ? clamp01(Math.pow(Math.max(0, offerings) / target, 0.55)) : 0;
-
-  const progress = Math.min(1, Math.max(dayProgress, offeringProgress));
-  return FORMATION_FLOOR + (1 - FORMATION_FLOOR) * progress;
+  const progress = baseFormation + (dayCeiling - baseFormation) * offeringProgress;
+  return Math.min(1.0, Math.max(baseFormation, progress));
 }
 
 function clamp01(v: number) {
