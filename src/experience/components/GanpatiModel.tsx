@@ -15,7 +15,18 @@ import type { ParticleHandle } from './ParticleField';
 import { getRitualState, getSthapanaArrival } from '../state/festival';
 import { VISARJAN_DURATION } from './DissolveController';
 
-export const GANPATI_URL = '/models/ganpati.glb';
+export function getGanpatiModelUrl(): string {
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get('model');
+    if (m === 'backup' || m === 'old') return '/models/ganpati.backup.glb';
+    if (m === 'raw' || m === 'new' || m === 'full') return '/models/ganpati.glb?v=2';
+    if (m === 'optimized') return '/models/ganpati.optimized.glb?v=1';
+  }
+  return '/models/ganpati.optimized.glb?v=1';
+}
+
+export const GANPATI_URL = '/models/ganpati.optimized.glb?v=1';
 
 /** Where Bappa sits. Every other system aims at this point. */
 export const BAPPA_CENTER = new THREE.Vector3(0, 0.95, 0);
@@ -97,7 +108,8 @@ const carveChunk = /* glsl */ `
 
 export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
   const { size } = useThree();
-  const { scene } = useGLTF(GANPATI_URL);
+  const modelUrl = typeof window !== 'undefined' ? getGanpatiModelUrl() : GANPATI_URL;
+  const { scene } = useGLTF(modelUrl);
   const group = useRef<THREE.Group>(null);
   const cloud = useRef<FormationCloud | null>(null);
   const surfaceMesh = useRef<THREE.Mesh | null>(null);
@@ -201,7 +213,7 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
 
              // Anatomical breathing: mid-torso, belly, and upper chest.
              // Pedestal/base (hNorm < 0.32) and crown/head/ears (hNorm > 0.67) are 100% stationary.
-             float hNorm = clamp((position.y + 0.4990234) / 0.9980468, 0.0, 1.0);
+             float hNorm = clamp((position.y + 0.489743) / 0.979411, 0.0, 1.0);
              float verticalMask = smoothstep(0.32, 0.42, hNorm) * (1.0 - smoothstep(0.56, 0.67, hNorm));
              // Bappa faces +X in authored coordinates; expand belly, chest, and lateral flanks while keeping back stationary
              float anteriorMask = smoothstep(-0.12, 0.04, position.x);
@@ -442,8 +454,9 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
     // and hides once Visarjan dissolve completes.
     const { state: sceneState, elapsed: sceneElapsed } = useScene.getState();
     const isVisarjanCompleted = sceneState === 'VISARJAN' && sceneElapsed >= VISARJAN_DURATION;
+    const isVisarjanDissolving = sceneState === 'VISARJAN' && sceneElapsed < VISARJAN_DURATION;
     const isArrivingEmergence = sthapana.isArriving && sthapana.elapsed >= 2.5;
-    const isPresent = ((ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving) || isArrivingEmergence) && !isVisarjanCompleted;
+    const isPresent = ((ritualState === 'BAPPA_PRESENT' && !sthapana.isArriving) || isArrivingEmergence || isVisarjanDissolving) && !isVisarjanCompleted;
     group.current.visible = isPresent;
 
     const state = useScene.getState().state;
@@ -500,4 +513,6 @@ export function GanpatiModel({ perf, handle, particles, onGeometry }: Props) {
   );
 }
 
-useGLTF.preload(GANPATI_URL);
+useGLTF.preload('/models/ganpati.optimized.glb');
+useGLTF.preload('/models/ganpati.glb?v=2');
+useGLTF.preload('/models/ganpati.backup.glb');

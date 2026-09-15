@@ -127,6 +127,17 @@ export function DevPanel() {
     force((n) => n + 1);
   };
 
+  const currentModel = typeof window !== 'undefined'
+    ? (new URLSearchParams(window.location.search).get('model') || 'optimized')
+    : 'optimized';
+
+  const switchModel = (m: string) => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('model', m);
+    window.location.href = url.toString();
+  };
+
   if (!open) {
     return (
       <button className="dev-tab" onClick={toggle} title="Development controls (`)">
@@ -282,6 +293,34 @@ export function DevPanel() {
               {t.toLowerCase()}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* ---- 3D model selection (local debugging) ---- */}
+      <div className="dev-row">
+        <label>model</label>
+        <div className="dev-btns">
+          <button
+            className={currentModel === 'old' || currentModel === 'backup' ? 'on' : ''}
+            onClick={() => switchModel('old')}
+            title="Old model (~19k triangles, 1.01 MB)"
+          >
+            old (19k)
+          </button>
+          <button
+            className={currentModel === 'new' || currentModel === 'raw' ? 'on' : ''}
+            onClick={() => switchModel('new')}
+            title="New uncompressed model (~946k triangles, 28.38 MB)"
+          >
+            new (946k)
+          </button>
+          <button
+            className={currentModel === 'optimized' ? 'on' : ''}
+            onClick={() => switchModel('optimized')}
+            title="New optimized model (~150k triangles, 5.13 MB)"
+          >
+            opt (150k)
+          </button>
         </div>
       </div>
 

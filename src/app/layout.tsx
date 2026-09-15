@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${serif.variable} ${sans.variable}`}>
       <head>
         {/* The GLB is the single blocking asset; start it during HTML parse. */}
-        <link rel="preload" href="/models/ganpati.glb" as="fetch" crossOrigin="anonymous" />
+        <link rel="preload" href="/models/ganpati.optimized.glb" as="fetch" crossOrigin="anonymous" />
       </head>
       <body>{children}</body>
     </html>

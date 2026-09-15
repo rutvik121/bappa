@@ -135,6 +135,12 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
         } else {
           targetAimY = 1.15;
         }
+      } else if (state === 'VISARJAN') {
+        // While Bappa dissolves (0-58s), hold light on Bappa's form (1.15); then gently settle to empty asana (0.05)
+        const { elapsed } = useScene.getState();
+        const settleProgress = Math.min(1, Math.max(0, (elapsed - VISARJAN_DURATION) / 14));
+        const ease = settleProgress * settleProgress * (3 - 2 * settleProgress);
+        targetAimY = THREE.MathUtils.lerp(1.15, 0.05, ease);
       } else if (ritualState === 'POST_VISARJAN') {
         targetAimY = 0.05;
       }
@@ -175,12 +181,6 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
         stateFactorFill = 1.0;
         stateFactorFace = 1.0;
       }
-    } else if (ritualState === 'POST_VISARJAN') {
-      // Quiet warmth holding the memory on the empty asana
-      stateFactorKey = 0.32; // ~12 intensity
-      stateFactorRim = 0.10;
-      stateFactorFill = 0.45;
-      stateFactorFace = 0.0;
     } else if (state === 'VISARJAN') {
       // VISARJAN transition: Bappa dissolves until VISARJAN_DURATION (58s).
       // After Bappa disappears, gradually reduce the scene lighting over time.
@@ -194,6 +194,12 @@ export function LightingSystem({ perf }: { perf: PerfProfile }) {
       stateFactorRim = THREE.MathUtils.lerp(1.0, 0.10, ease);
       stateFactorFill = THREE.MathUtils.lerp(1.0, 0.45, ease);
       stateFactorFace = THREE.MathUtils.lerp(1.0, 0.0, ease);
+    } else if (ritualState === 'POST_VISARJAN') {
+      // Quiet warmth holding the memory on the empty asana
+      stateFactorKey = 0.32; // ~12 intensity
+      stateFactorRim = 0.10;
+      stateFactorFill = 0.45;
+      stateFactorFace = 0.0;
     }
 
     if (key.current) key.current.intensity = 36 * naturalSunlight * mood.current.key * reveal * offeringResonance * stateFactorKey;
