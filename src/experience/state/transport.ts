@@ -130,19 +130,31 @@ async function snapshotNow(): Promise<BappaSnapshot | null> {
 /* Supabase realtime                                                   */
 /* ------------------------------------------------------------------ */
 
+const supabaseModulePromise =
+  typeof window !== 'undefined' && usingRealtime ? import('@supabase/supabase-js') : null;
+
 /**
  * How long the socket is given to say it is listening before the stream
  * is opened instead. Generous: a slow phone on a bad connection should
  * not be given up on early, but nobody should sit in front of a Bappa
  * that has quietly stopped hearing anything either.
  */
-const SUBSCRIBE_GRACE_MS = 8000;
+const SUBSCRIBE_GRACE_MS = 20_000;
 
 function realtimeTransport(h: TransportHandlers): Transport {
   let closed = false;
   let cleanup: (() => void) | null = null;
   /** Stands in when the socket cannot be loaded, opened, or kept. */
   let fallback: Transport | null = null;
+  let hasSubscribedOnce = false;
+
+  // Fetch the initial snapshot immediately so the UI does not wait on the
+  // websocket handshake to display Bappa and the current count.
+  void snapshotNow().then((snap) => {
+    if (snap && !closed) {
+      h.onSnapshot(snap);
+    }
+  });
 
   /**
    * Anything that means "this browser is not going to hear about
@@ -152,28 +164,23 @@ function realtimeTransport(h: TransportHandlers): Transport {
    * come up -- the project has it switched off, a proxy eats websockets,
    * the subscription errors or simply never lands -- the stream still
    * works, because it is the page's own origin over ordinary HTTP.
-   * Without this the client reported itself offline and then did nothing
-   * at all, which looks exactly like the collective being broken: the
-   * tally only moved when the visitor happened to reload.
    */
   const giveUpOnSocket = () => {
-    if (closed || fallback) return;
+    if (closed || fallback || hasSubscribedOnce) return;
     if (process.env.NODE_ENV !== 'production') {
-      console.info('[bappa] realtime did not come up; falling back to the event stream');
+      console.info('[bappa] realtime did not come up after grace period; starting fallback stream');
     }
     h.onStatus('offline');
-    cleanup?.();
-    cleanup = null;
     fallback = streamTransport(h);
   };
 
-  const grace = setTimeout(giveUpOnSocket, SUBSCRIBE_GRACE_MS);
+  let grace: ReturnType<typeof setTimeout> | null = setTimeout(giveUpOnSocket, SUBSCRIBE_GRACE_MS);
 
   void (async () => {
    try {
     // Loaded only on the path that uses it, so a deploy without Supabase
     // never ships the client to a visitor.
-    const { createClient } = await import('@supabase/supabase-js');
+    const { createClient } = await (supabaseModulePromise ?? import('@supabase/supabase-js'));
     if (closed) return;
 
     const db = createClient(SUPABASE_URL!, SUPABASE_ANON!, {
@@ -213,16 +220,24 @@ function realtimeTransport(h: TransportHandlers): Transport {
         (payload) => h.onEvent(rowToEvent(payload.new as Row, h.snapshot()))
       )
       .subscribe((status) => {
-        if (closed || fallback) return;
+        if (closed) return;
         if (status === 'SUBSCRIBED') {
-          clearTimeout(grace);
+          hasSubscribedOnce = true;
+          if (grace) {
+            clearTimeout(grace);
+            grace = null;
+          }
+          if (fallback) {
+            fallback.close();
+            fallback = null;
+          }
           h.onStatus('live');
           void catchUp();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          // Not just a status to report: with nothing behind it this was
-          // the end of the browser hearing anything.
-          clearTimeout(grace);
-          giveUpOnSocket();
+          // Recoverable connection states: network glitch, mobile sleep/wake, tab backgrounding.
+          // Supabase Realtime client automatically reconnects.
+          // DO NOT remove the channel. DO NOT permanently switch to fallback.
+          h.onStatus('offline');
         }
       });
 
@@ -230,10 +245,10 @@ function realtimeTransport(h: TransportHandlers): Transport {
       void db.removeChannel(channel);
     };
    } catch {
-    // The realtime client never arrived -- a chunk that failed to fetch,
-    // a tab left open across a deploy, a network that dropped at exactly
-    // the wrong moment.
-    clearTimeout(grace);
+    if (grace) {
+      clearTimeout(grace);
+      grace = null;
+    }
     giveUpOnSocket();
    }
   })();
@@ -241,7 +256,7 @@ function realtimeTransport(h: TransportHandlers): Transport {
   return {
     close() {
       closed = true;
-      clearTimeout(grace);
+      if (grace) clearTimeout(grace);
       cleanup?.();
       fallback?.close();
     },

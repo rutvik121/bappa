@@ -20,18 +20,17 @@ import { eventsSince, getSnapshot } from '@/server/collective/state';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-/** How often the store is asked for anything new. */
-const POLL_MS = 1000;
+/** How often the store is asked for anything new during fallback. */
+const POLL_MS = 2500;
 
 /**
- * A connection is closed from this side well before the platform's own
- * ceiling, so it ends cleanly and `EventSource` reopens it with its
- * cursor, rather than being cut mid-message.
+ * Kept short so fallback cannot consume significant Vercel CPU or
+ * provisioned memory.
  */
-const MAX_CONNECTION_MS = 50_000;
+const MAX_CONNECTION_MS = 10_000;
 
 /** Comment lines, to keep proxies from buffering the stream shut. */
-const KEEPALIVE_MS = 15_000;
+const KEEPALIVE_MS = 5000;
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -67,6 +66,9 @@ export async function GET(req: NextRequest) {
           // Already closed by the client going away.
         }
       };
+
+      // Tell EventSource to wait 15s before reconnecting when this short stream ends.
+      send(`retry: 15000\n\n`);
 
       // Anyone arriving mid-festival starts from the state, not from the
       // history: they are handed how built he is now, and watch from
