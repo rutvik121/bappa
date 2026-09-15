@@ -5,7 +5,7 @@ import { useRitualState, useSthapanaArrival, type RitualState } from '../state/f
 /**
  * The opening words. Responsive to the authoritative ritual state:
  * - PRE_STHAPANA (and during Sthapana arrival 0-14s): "His place is ready."
- * - BAPPA_PRESENT (14s+): "Leave something with Bappa."
+ * - BAPPA_PRESENT (14s+): "Talk to Bappa. From the heart."
  * - POST_VISARJAN: "He returns."
  */
 export function Masthead({ state: overrideState }: { state?: RitualState }) {
@@ -45,14 +45,17 @@ export function Masthead({ state: overrideState }: { state?: RitualState }) {
 
   return (
     <>
-      <p className="brand">Bappa 2026</p>
+      <p className="brand trust-chip">
+        <span className="trust-chip__lock" aria-hidden="true">🔒</span>
+        Between you &amp; Bappa
+      </p>
       <h1 className="headline">
-        Leave something
+        Talk to Bappa.
         <br />
-        with Bappa.
+        From the heart.
       </h1>
-      <p className="litany">A wish. A gratitude. A weight. A promise.</p>
-      <p className="support">He becomes what we leave behind.</p>
+      <p className="litany">A wish. A gratitude. A worry. A promise.</p>
+      <p className="support">Whatever is in your heart, you can tell him.</p>
     </>
   );
 }

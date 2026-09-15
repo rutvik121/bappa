@@ -198,6 +198,28 @@ button {
   color: var(--ink-3);
 }
 
+/* Trust chip variant — replaces the plain "BAPPA 2026" label on the
+   BAPPA_PRESENT hero. Sits in the same vertical slot; no layout shift.
+   Deliberately unobtrusive: thin border, near-transparent bg, same
+   muted ink as the label it replaces. */
+.trust-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  text-indent: 0;
+  letter-spacing: 0.18em;
+  border: 1px solid rgba(255, 220, 180, 0.18);
+  background: rgba(255, 220, 180, 0.04);
+  border-radius: 3px;
+}
+
+.trust-chip__lock {
+  font-size: 9px;
+  letter-spacing: 0;
+  opacity: 0.7;
+}
+
 /* --- actions --- */
 
 /* The action. A bordered, square, letterspaced rite -- not a pill, not a
@@ -670,6 +692,22 @@ button {
   font-size: 12px;
   letter-spacing: 0.02em;
   color: var(--ink-3);
+}
+
+/* Privacy reassurance in the writing screen.
+   --privacy: the primary promise — same size as .note but slightly brighter.
+   --privacy-sub: the clarification — smaller and quieter, so it reads as
+   supporting text rather than competing with the promise above. */
+.note--privacy {
+  color: var(--ink-2);
+}
+
+.note--privacy-sub {
+  font-size: 10.5px;
+  letter-spacing: 0.01em;
+  color: var(--ink-3);
+  opacity: 0.72;
+  margin-top: 4px;
 }
 
 /* ---------------------------------------------------------------- */

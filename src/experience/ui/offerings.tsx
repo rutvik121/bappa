@@ -28,7 +28,7 @@ export const OFFERINGS: readonly Offering[] = [
   {
     id: 'GRATITUDE',
     name: 'Gratitude',
-    line: 'For what you’ve been given.',
+    line: "Something you're thankful for.",
     prompt: 'Tell me.',
     placeholder: 'Someone. Something. A moment.',
     offer: 'Leave it with me.',
@@ -37,7 +37,7 @@ export const OFFERINGS: readonly Offering[] = [
   {
     id: 'WISH',
     name: 'Wish',
-    line: 'For what you hope for.',
+    line: 'Something you hope for.',
     prompt: 'Tell me.',
     placeholder: 'Whatever you hope for.',
     offer: 'Leave it with me.',
@@ -46,7 +46,7 @@ export const OFFERINGS: readonly Offering[] = [
   {
     id: 'VIGHNA',
     name: 'Obstacle',
-    line: 'For what weighs on you.',
+    line: 'Something weighing on you.',
     prompt: 'Tell me.',
     placeholder: 'The thing you have been carrying.',
     offer: 'Leave it with me.',
@@ -55,7 +55,7 @@ export const OFFERINGS: readonly Offering[] = [
   {
     id: 'PROMISE',
     name: 'Promise',
-    line: 'For what you mean to keep.',
+    line: 'Something you mean to keep.',
     prompt: 'Tell me.',
     placeholder: 'Something small enough to keep.',
     offer: 'Leave it with me.',

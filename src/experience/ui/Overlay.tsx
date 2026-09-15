@@ -349,7 +349,7 @@ export function Overlay({ ready }: { ready: boolean }) {
                 tabIndex={arrived ? 0 : -1}
                 aria-hidden={!arrived}
               >
-                Leave something
+                TALK TO BAPPA
               </button>
             </div>
           )}
@@ -399,7 +399,7 @@ export function Overlay({ ready }: { ready: boolean }) {
             className={`layer layer--choose ${scene === 'choose' ? 'in' : ''}`}
             aria-label="Choose what to leave"
           >
-            <h2 className="ask">What would you like to leave with me?</h2>
+            <h2 className="ask">What do you want to tell Bappa?</h2>
 
             <ul className="doors">
               {OFFERINGS.map((o) => (
@@ -450,7 +450,8 @@ export function Overlay({ ready }: { ready: boolean }) {
             />
 
             {/* Private reassurance */}
-            <p className="note">This stays between you and me.</p>
+            <p className="note note--privacy">Your words are not saved.</p>
+            <p className="note note--privacy-sub">What you tell Bappa stays private. Only an anonymous signal becomes part of the collective experience.</p>
 
             <button className="rite rite--offer" onClick={offer} disabled={!draft.trim()}>
               {active.offer}

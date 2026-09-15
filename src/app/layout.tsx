@@ -24,21 +24,21 @@ const sans = Hanken_Grotesk({
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://bappa.live'),
-  title: 'BAPPA 2026 — Leave something with Bappa',
+  title: 'BAPPA 2026 — Talk to Bappa. From the heart.',
   description:
-    'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+    'A wish. A gratitude. A worry. A promise. Whatever is in your heart, you can tell him. Your words are not saved.',
   openGraph: {
-    title: 'BAPPA 2026 — Leave something with Bappa',
+    title: 'BAPPA 2026 — Talk to Bappa. From the heart.',
     description:
-      'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+      'A wish. A gratitude. A worry. A promise. Whatever is in your heart, you can tell him. Your words are not saved.',
     type: 'website',
     images: [{ url: '/icon.png', width: 512, height: 512, alt: 'BAPPA 2026' }],
   },
   twitter: {
     card: 'summary',
-    title: 'BAPPA 2026 — Leave something with Bappa',
+    title: 'BAPPA 2026 — Talk to Bappa. From the heart.',
     description:
-      'A wish. A gratitude. A weight. A promise. A Ganpati made of what everyone leaves with him — for ten days, and then Visarjan.',
+      'A wish. A gratitude. A worry. A promise. Whatever is in your heart, you can tell him. Your words are not saved.',
     images: ['/icon.png'],
   },
   icons: {
