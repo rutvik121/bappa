@@ -102,6 +102,7 @@ export function Overlay({ ready }: { ready: boolean }) {
     const fetchLater = window.setTimeout(() => room.prefetchEarly(), 2500);
 
     return () => {
+      useCollective.getState().stop();
       unsubscribe();
       disarm();
       window.clearTimeout(fetchLater);

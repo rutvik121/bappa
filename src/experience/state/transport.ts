@@ -146,7 +146,7 @@ function realtimeTransport(h: TransportHandlers): Transport {
   let cleanup: (() => void) | null = null;
   /** Stands in when the socket cannot be loaded, opened, or kept. */
   let fallback: Transport | null = null;
-  let hasSubscribedOnce = false;
+  let isRealtimeLive = false;
 
   // Fetch the initial snapshot immediately so the UI does not wait on the
   // websocket handshake to display Bappa and the current count.
@@ -156,25 +156,23 @@ function realtimeTransport(h: TransportHandlers): Transport {
     }
   });
 
-  /**
-   * Anything that means "this browser is not going to hear about
-   * offerings over the socket" ends up here.
-   *
-   * Realtime is the better transport, not the only one. If it does not
-   * come up -- the project has it switched off, a proxy eats websockets,
-   * the subscription errors or simply never lands -- the stream still
-   * works, because it is the page's own origin over ordinary HTTP.
-   */
-  const giveUpOnSocket = () => {
-    if (closed || fallback || hasSubscribedOnce) return;
+  const startFallback = () => {
+    if (closed || fallback || isRealtimeLive) return;
     if (process.env.NODE_ENV !== 'production') {
-      console.info('[bappa] realtime did not come up after grace period; starting fallback stream');
+      console.info('[bappa] realtime unavailable; starting controlled fallback stream');
     }
     h.onStatus('offline');
     fallback = streamTransport(h);
   };
 
-  let grace: ReturnType<typeof setTimeout> | null = setTimeout(giveUpOnSocket, SUBSCRIBE_GRACE_MS);
+  const stopFallback = () => {
+    if (fallback) {
+      fallback.close();
+      fallback = null;
+    }
+  };
+
+  let grace: ReturnType<typeof setTimeout> | null = setTimeout(startFallback, SUBSCRIBE_GRACE_MS);
 
   void (async () => {
    try {
@@ -187,6 +185,7 @@ function realtimeTransport(h: TransportHandlers): Transport {
       auth: { persistSession: false, autoRefreshToken: false },
       realtime: { params: { eventsPerSecond: 4 } },
     });
+    if (closed) return;
 
     /**
      * Anything left with him while this browser was not listening.
@@ -222,24 +221,29 @@ function realtimeTransport(h: TransportHandlers): Transport {
       .subscribe((status) => {
         if (closed) return;
         if (status === 'SUBSCRIBED') {
-          hasSubscribedOnce = true;
+          isRealtimeLive = true;
           if (grace) {
             clearTimeout(grace);
             grace = null;
           }
-          if (fallback) {
-            fallback.close();
-            fallback = null;
-          }
+          stopFallback();
           h.onStatus('live');
           void catchUp();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          // Recoverable connection states: network glitch, mobile sleep/wake, tab backgrounding.
-          // Supabase Realtime client automatically reconnects.
-          // DO NOT remove the channel. DO NOT permanently switch to fallback.
+          isRealtimeLive = false;
           h.onStatus('offline');
+          if (grace) {
+            clearTimeout(grace);
+            grace = null;
+          }
+          startFallback();
         }
       });
+
+    if (closed) {
+      void db.removeChannel(channel);
+      return;
+    }
 
     cleanup = () => {
       void db.removeChannel(channel);
@@ -249,16 +253,22 @@ function realtimeTransport(h: TransportHandlers): Transport {
       clearTimeout(grace);
       grace = null;
     }
-    giveUpOnSocket();
+    if (!closed) {
+      startFallback();
+    }
    }
   })();
 
   return {
     close() {
       closed = true;
-      if (grace) clearTimeout(grace);
+      if (grace) {
+        clearTimeout(grace);
+        grace = null;
+      }
       cleanup?.();
-      fallback?.close();
+      cleanup = null;
+      stopFallback();
     },
   };
 }
@@ -270,42 +280,63 @@ function realtimeTransport(h: TransportHandlers): Transport {
 function streamTransport(h: TransportHandlers): Transport {
   let closed = false;
   let source: EventSource | null = null;
-  let retry: ReturnType<typeof setTimeout> | null = null;
+  let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let backoffMs = 15_000;
+  const MAX_BACKOFF_MS = 120_000;
+
+  const scheduleRetry = () => {
+    if (closed || retryTimer) return;
+    const delay = backoffMs;
+    // Exponential backoff for subsequent attempts: 15s -> 30s -> 60s -> 120s max
+    backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+
+    retryTimer = setTimeout(async () => {
+      retryTimer = null;
+      if (closed) return;
+      const s = await snapshotNow();
+      if (s && !closed) h.onSnapshot(s);
+      open();
+    }, delay);
+  };
 
   const open = () => {
     if (closed) return;
 
-    // The cursor rides on the connection so a reconnect resumes rather
-    // than replays; EventSource returns it as Last-Event-ID by itself,
-    // and the query parameter covers the first connection.
+    // Ensure only one EventSource connection exists at a time
+    if (source) {
+      source.close();
+      source = null;
+    }
+
     const es = new EventSource(`/api/stream?since=${h.cursor()}`);
     source = es;
 
     es.addEventListener('snapshot', (e) => {
       const s = parse<BappaSnapshot>((e as MessageEvent).data);
-      if (s) h.onSnapshot(s);
+      if (s && !closed) h.onSnapshot(s);
     });
 
     es.addEventListener('collective', (e) => {
       const ev = parse<CollectiveEvent>((e as MessageEvent).data);
-      if (ev) h.onEvent(ev);
+      if (ev && !closed) h.onEvent(ev);
     });
 
-    es.onopen = () => h.onStatus('live');
+    es.onopen = () => {
+      if (!closed) {
+        h.onStatus('live');
+        backoffMs = 15_000;
+      }
+    };
 
     es.onerror = () => {
-      h.onStatus('offline');
-      // EventSource retries by itself while the response was a stream; a
-      // hard failure needs its own, and on the way back it takes a fresh
-      // snapshot rather than trusting a local state that may be stale.
-      if (es.readyState === EventSource.CLOSED) {
+      // Explicitly close EventSource to prevent the browser's native automatic reconnect
+      es.close();
+      if (source === es) {
         source = null;
-        if (retry) clearTimeout(retry);
-        retry = setTimeout(async () => {
-          const s = await snapshotNow();
-          if (s) h.onSnapshot(s);
-          open();
-        }, 4000);
+      }
+      if (!closed) {
+        h.onStatus('offline');
+        scheduleRetry();
       }
     };
   };
@@ -315,8 +346,14 @@ function streamTransport(h: TransportHandlers): Transport {
   return {
     close() {
       closed = true;
-      source?.close();
-      if (retry) clearTimeout(retry);
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (source) {
+        source.close();
+        source = null;
+      }
     },
   };
 }
