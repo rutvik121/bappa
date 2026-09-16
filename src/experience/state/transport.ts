@@ -308,7 +308,7 @@ function streamTransport(h: TransportHandlers): Transport {
       source = null;
     }
 
-    const es = new EventSource(`/api/stream?since=${h.cursor()}`);
+    const es = new EventSource(`/api/stream?since=${h.cursor()}&v=2`);
     source = es;
 
     es.addEventListener('snapshot', (e) => {

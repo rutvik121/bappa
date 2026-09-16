@@ -34,6 +34,13 @@ const KEEPALIVE_MS = 5000;
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
+  const version = url.searchParams.get('v');
+
+  if (version !== '2') {
+    return new Response(null, {
+      status: 204,
+    });
+  }
 
   // EventSource replays its own cursor on reconnect; the query parameter
   // is for the first connection and for anything that is not EventSource.
